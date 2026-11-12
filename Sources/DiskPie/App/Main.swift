@@ -7,6 +7,7 @@ enum Entry {
         if arguments.contains("--render") {
             exit(MainActor.assumeIsolated { DebugRender.run(arguments: arguments) })
         }
+        if arguments.contains("--analyze") { exit(DebugAnalyze.run(arguments: arguments)) }
         DiskPieApp.main()
     }
 }

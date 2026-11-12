@@ -1,13 +1,18 @@
 import SwiftUI
 
 enum InspectorTab: String, CaseIterable, Identifiable {
-    case contents, collector
+    case contents, largest, types, old, dev, duplicates, collector
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .contents: "Содержимое"
+        case .largest: "Самое большое"
+        case .types: "По типам файлов"
+        case .old: "Давно не менялись"
+        case .dev: "Кэши разработчика"
+        case .duplicates: "Дубликаты"
         case .collector: "Сборщик"
         }
     }
@@ -15,6 +20,11 @@ enum InspectorTab: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .contents: "list.bullet"
+        case .largest: "arrow.up.right.and.arrow.down.left"
+        case .types: "square.stack.3d.up"
+        case .old: "clock.arrow.circlepath"
+        case .dev: "hammer"
+        case .duplicates: "doc.on.doc"
         case .collector: "tray.full"
         }
     }
@@ -46,6 +56,11 @@ struct InspectorView: View {
             Group {
                 switch model.inspectorTab {
                 case .contents: ContentsPanel()
+                case .largest: LargestPanel()
+                case .types: TypesPanel()
+                case .old: OldFilesPanel()
+                case .dev: DevCachesPanel()
+                case .duplicates: DuplicatesPanel()
                 case .collector: CollectorPanel()
                 }
             }

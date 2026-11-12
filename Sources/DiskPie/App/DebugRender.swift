@@ -51,3 +51,27 @@ enum DebugRender {
         return 0
     }
 }
+
+/// `DiskPie --analyze <path>` prints what the inspector panels would show.
+enum DebugAnalyze {
+    static func run(arguments: [String]) -> Int32 {
+        guard let index = arguments.firstIndex(of: "--analyze"), arguments.count > index + 1 else { return 2 }
+        let path = arguments[index + 1]
+        let root = Scanner.scan(path: path, shallow: false, ctx: ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path)))
+        print("total \(Fmt.size(root.size)), \(Fmt.files(root.fileCount))")
+        print("-- largest files")
+        for node in Analyses.largestFiles(in: root, limit: 5) { print(Fmt.size(node.size), node.path) }
+        print("-- categories")
+        for stat in Analyses.categories(in: root) { print(stat.category.title, Fmt.size(stat.size), stat.count) }
+        print("-- build artifacts")
+        for node in Analyses.buildArtifacts(in: root, limit: 5) { print(Fmt.size(node.size), node.path) }
+        let old = Analyses.oldFiles(in: root, olderThan: Date().addingTimeInterval(-365 * 86400))
+        print("-- older than a year: \(old.count) files, \(Fmt.size(old.total))")
+        var files: [(path: String, size: Int64)] = []
+        Analyses.walk(root) { if $0.kind == .file, $0.size >= 100_000 { files.append(($0.path, $0.size)) } }
+        let groups = DuplicateFinder.find(files, cancel: CancelFlag()) { _, _ in }
+        print("-- duplicates: \(groups.count) groups, wasted \(Fmt.size(groups.reduce(0) { $0 + $1.wasted }))")
+        for group in groups.prefix(3) { print(Fmt.size(group.size), group.paths) }
+        return 0
+    }
+}

@@ -50,6 +50,8 @@ final class AppModel {
     var quickLookURL: URL?
     var zoomDirection: ZoomDirection = .into
     var collector: [FileNode] = []
+    let devCaches = DevCacheStore()
+    let duplicates = DuplicateSearch()
     var ringDepth: Int = UserDefaults.standard.object(forKey: "ringDepth") as? Int ?? 5 {
         didSet { UserDefaults.standard.set(ringDepth, forKey: "ringDepth") }
     }
@@ -473,8 +475,20 @@ final class AppModel {
         }
     }
 
-    /// Hook for features holding path-based results.
-    func didRemove(paths: [String]) {}
+    private func didRemove(paths: [String]) {
+        duplicates.forget(paths: paths)
+    }
+
+    /// Empties a cache folder by moving its contents to the Trash, then refreshes the tree and sizes.
+    func cleanContents(of item: DevCacheItem) {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: item.path), !names.isEmpty else {
+            showMessage("Пусто", "В «\(item.title)» нечего удалять.")
+            return
+        }
+        let base = item.path.hasSuffix("/") ? item.path : item.path + "/"
+        trash(paths: names.map { base + $0 }, title: "Очистить «\(item.title)»?")
+        devCaches.measure()
+    }
 
     func trashCollector() {
         trash(collector)
