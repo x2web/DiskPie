@@ -66,15 +66,7 @@ struct MainToolbar: ToolbarContent {
     }
 }
 
-/// Filled in by later features.
-struct ScanMenuExtras: View {
-    var body: some View { EmptyView() }
-}
 
-/// Filled in by later features.
-struct ToolbarExtras: View {
-    var body: some View { EmptyView() }
-}
 
 struct HeaderBar: View {
     @Environment(AppModel.self) private var model
@@ -242,7 +234,3 @@ struct StatusBar: View {
     }
 }
 
-/// Filled in by later features.
-struct StatusExtras: View {
-    var body: some View { EmptyView() }
-}

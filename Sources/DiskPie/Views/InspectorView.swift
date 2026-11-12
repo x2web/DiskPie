@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum InspectorTab: String, CaseIterable, Identifiable {
-    case contents, largest, types, old, dev, duplicates, collector
+    case contents, largest, types, old, changes, dev, duplicates, collector
 
     var id: Self { self }
 
@@ -11,6 +11,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
         case .largest: "Самое большое"
         case .types: "По типам файлов"
         case .old: "Давно не менялись"
+        case .changes: "Что изменилось"
         case .dev: "Кэши разработчика"
         case .duplicates: "Дубликаты"
         case .collector: "Сборщик"
@@ -23,6 +24,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
         case .largest: "arrow.up.right.and.arrow.down.left"
         case .types: "square.stack.3d.up"
         case .old: "clock.arrow.circlepath"
+        case .changes: "plusminus"
         case .dev: "hammer"
         case .duplicates: "doc.on.doc"
         case .collector: "tray.full"
@@ -59,6 +61,7 @@ struct InspectorView: View {
                 case .largest: LargestPanel()
                 case .types: TypesPanel()
                 case .old: OldFilesPanel()
+                case .changes: ChangesPanel()
                 case .dev: DevCachesPanel()
                 case .duplicates: DuplicatesPanel()
                 case .collector: CollectorPanel()

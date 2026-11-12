@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 import SwiftUI
 
 enum ViewMode: String, CaseIterable, Identifiable {
@@ -52,6 +53,15 @@ final class AppModel {
     var collector: [FileNode] = []
     let devCaches = DevCacheStore()
     let duplicates = DuplicateSearch()
+    var cachedMeta: ScanMeta?
+    var recentScans: [ScanMeta] = ScanStore.all()
+    var liveUpdates = UserDefaults.standard.bool(forKey: "liveUpdates") {
+        didSet {
+            UserDefaults.standard.set(liveUpdates, forKey: "liveUpdates")
+            configureWatcher()
+        }
+    }
+    var liveChanges = 0
     var ringDepth: Int = UserDefaults.standard.object(forKey: "ringDepth") as? Int ?? 5 {
         didSet { UserDefaults.standard.set(ringDepth, forKey: "ringDepth") }
     }
@@ -62,6 +72,9 @@ final class AppModel {
     @ObservationIgnored private var progressTimer: Timer?
     @ObservationIgnored private var dirty = false
     @ObservationIgnored var skipPaths: Set<String> = []
+    @ObservationIgnored private var watcher: LiveWatcher?
+    @ObservationIgnored private var pendingEvents: [String: Bool] = [:]
+    @ObservationIgnored private var eventFlush: DispatchWorkItem?
 
     var canGoBack: Bool { !backStack.isEmpty }
     var canGoForward: Bool { !forwardStack.isEmpty }
@@ -87,7 +100,9 @@ final class AppModel {
 
     func startScan(path: String) {
         cancelScan()
+        stopWatcher()
         resetTree()
+        cachedMeta = nil
         rootPath = path
         skipPaths = DiskAccess.skipPaths(forRoot: path)
         isScanning = true
@@ -138,6 +153,9 @@ final class AppModel {
 
     func closeScan() {
         cancelScan()
+        stopWatcher()
+        cachedMeta = nil
+        recentScans = ScanStore.all()
         ctx = nil
         stopProgressTimer()
         isScanning = false
@@ -184,8 +202,222 @@ final class AppModel {
         didFinishScan()
     }
 
-    /// Hook for features that react to a completed scan.
-    func didFinishScan() {}
+    private func didFinishScan() {
+        saveSnapshot()
+        configureWatcher()
+    }
+
+    // MARK: Snapshots
+
+    private func saveSnapshot() {
+        guard let root, let date = scanDate else { return }
+        let path = rootPath, partial = isPartial
+        busyWriting = true
+        Task.detached(priority: .utility) { [self] in
+            let meta = try? ScanStore.save(root, rootPath: path, date: date, partial: partial)
+            await MainActor.run {
+                busyWriting = false
+                if meta != nil { recentScans = ScanStore.all() }
+            }
+        }
+    }
+
+    func openSnapshot(_ meta: ScanMeta) {
+        cancelScan()
+        stopWatcher()
+        ctx = nil
+        stopProgressTimer()
+        Task.detached(priority: .userInitiated) { [self] in
+            do {
+                let root = try ScanStore.load(meta)
+                await MainActor.run {
+                    installCompletedTree(root, path: meta.rootPath, date: meta.date, partial: meta.partial, addHidden: false)
+                    cachedMeta = meta
+                }
+            } catch {
+                await MainActor.run { showMessage("Не удалось открыть снимок", error.localizedDescription) }
+            }
+        }
+    }
+
+    func deleteSnapshot(_ meta: ScanMeta) {
+        ScanStore.delete(meta)
+        recentScans = ScanStore.all()
+    }
+
+    func deleteAllSnapshots() {
+        ScanStore.deleteAll()
+        recentScans = []
+    }
+
+    /// Older snapshots of the current root, newest first.
+    var previousSnapshots: [ScanMeta] {
+        let current = scanDate ?? .distantFuture
+        return recentScans.filter { $0.rootPath == rootPath && $0.date < current.addingTimeInterval(-1) }
+    }
+
+    private func installCompletedTree(_ node: FileNode, path: String, date: Date, partial: Bool, addHidden: Bool) {
+        resetTree()
+        rootPath = path
+        skipPaths = DiskAccess.skipPaths(forRoot: path)
+        isScanning = false
+        isPartial = partial
+        scanDate = date
+        scanDuration = nil
+        progress = ScanProgress(files: node.fileCount, bytes: node.size)
+        if addHidden { addHiddenSpaceNode(to: node) }
+        root = node
+        focus = node
+        treeVersion += 1
+    }
+
+    // MARK: Administrator scan
+
+    func chooseFolderAndScanAsAdmin() {
+        guard let path = chooseFolder() else { return }
+        scanAsAdmin(path: path)
+    }
+
+    func scanAsAdmin(path: String) {
+        cancelScan()
+        stopWatcher()
+        resetTree()
+        cachedMeta = nil
+        rootPath = path
+        isScanning = true
+        progress = ScanProgress(current: "Сканирование с правами администратора…")
+        scanStarted = Date()
+        let ctx = ScanContext(skipPaths: [])
+        self.ctx = ctx
+        Task.detached(priority: .userInitiated) { [self] in
+            do {
+                let (root, inaccessible) = try await PrivilegedScan.run(path: path)
+                await MainActor.run {
+                    guard ctx === self.ctx else { return }
+                    self.ctx = nil
+                    let started = scanStarted
+                    installCompletedTree(root, path: path, date: Date(), partial: false, addHidden: true)
+                    progress.inaccessible = inaccessible
+                    scanDuration = started.map { Date().timeIntervalSince($0) }
+                    saveSnapshot()
+                    configureWatcher()
+                }
+            } catch {
+                await MainActor.run {
+                    guard ctx === self.ctx else { return }
+                    closeScan()
+                    if case PrivilegedScan.Failure.cancelled = error { return }
+                    showMessage("Скан от администратора не удался", error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    // MARK: Live updates
+
+    private func configureWatcher() {
+        stopWatcher()
+        guard liveUpdates, !isScanning, root != nil, !rootPath.isEmpty else { return }
+        let watcher = LiveWatcher(path: rootPath) { [weak self] paths, flags in
+            MainActor.assumeIsolated { self?.handleFSEvents(paths, flags) }
+        }
+        watcher.start()
+        self.watcher = watcher
+    }
+
+    private func stopWatcher() {
+        watcher?.stop()
+        watcher = nil
+        eventFlush?.cancel()
+        pendingEvents = [:]
+    }
+
+    private func handleFSEvents(_ paths: [String], _ flags: [FSEventStreamEventFlags]) {
+        guard !isScanning, root != nil else { return }
+        for (index, raw) in paths.enumerated() {
+            var path = raw
+            while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+            if !rootPath.hasPrefix(DiskAccess.dataVolume) { path = DiskAccess.normalize(path) }
+            if skipPaths.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { continue }
+            let deep = index < flags.count && flags[index] & FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs) != 0
+            pendingEvents[path] = (pendingEvents[path] ?? false) || deep
+        }
+        scheduleEventFlush()
+    }
+
+    private func scheduleEventFlush() {
+        eventFlush?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.flushEvents() }
+        }
+        eventFlush = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
+    }
+
+    private func flushEvents() {
+        guard !pendingEvents.isEmpty else { return }
+        if busyWriting || isScanning {
+            scheduleEventFlush()
+            return
+        }
+        var targets: [String: Bool] = [:]
+        for (path, deep) in pendingEvents {
+            guard let (node, exact) = resolve(path) else { continue }
+            let directory = node.isContainer ? node : (node.parent ?? node)
+            let key = directory.path
+            targets[key] = (targets[key] ?? false) || (deep && exact)
+        }
+        pendingEvents = [:]
+        let deepRoots = targets.filter(\.value).map(\.key)
+        for (path, deep) in targets {
+            let coveredByDeep = deepRoots.contains { $0 != path && path.hasPrefix($0 == "/" ? "/" : $0 + "/") }
+            if !coveredByDeep { refreshDirectory(path: path, deep: deep) }
+        }
+    }
+
+    private func refreshDirectory(path: String, deep: Bool) {
+        let skip = skipPaths
+        Task.detached(priority: .utility) { [self] in
+            let listing = Scanner.scan(path: path, shallow: !deep, ctx: ScanContext(skipPaths: skip))
+            await merge(listing, path: path, deep: deep)
+        }
+    }
+
+    /// Shallow refresh keeps known subfolders and scans only new ones.
+    private func merge(_ listing: FileNode, path: String, deep: Bool) {
+        guard !isScanning, !busyWriting, let node = node(atPath: path), node.isContainer else { return }
+        guard FileManager.default.fileExists(atPath: path) else {
+            detach([node])
+            liveChanges += 1
+            return
+        }
+        if deep {
+            replaceContents(of: node, with: listing)
+            liveChanges += 1
+            return
+        }
+        var known: [String: FileNode] = [:]
+        for child in node.children where child.isContainer && !child.isPending { known[child.name] = child }
+        var merged: [FileNode] = []
+        var newDirectories: [String] = []
+        let base = path.hasSuffix("/") ? path : path + "/"
+        for child in listing.children {
+            if child.isContainer, let existing = known[child.name] {
+                merged.append(existing)
+            } else {
+                merged.append(child)
+                if child.isPending { newDirectories.append(base + child.name) }
+            }
+        }
+        let update = FileNode(name: node.name, kind: node.kind)
+        update.children = merged
+        update.size = merged.reduce(0) { $0 + $1.size }
+        update.fileCount = merged.reduce(0) { $0 + $1.fileCount }
+        update.modified = listing.modified
+        replaceContents(of: node, with: update)
+        liveChanges += 1
+        for directory in newDirectories { refreshDirectory(path: directory, deep: true) }
+    }
 
     private func addHiddenSpaceNode(to root: FileNode) {
         guard DiskAccess.isVolumeRoot(rootPath), let usage = DiskAccess.volumeUsage(path: rootPath) else { return }

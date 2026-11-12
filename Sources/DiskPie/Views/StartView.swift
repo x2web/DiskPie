@@ -97,12 +97,4 @@ struct VolumeCard: View {
     }
 }
 
-/// Filled in by later features (admin scan).
-struct StartExtraButtons: View {
-    var body: some View { EmptyView() }
-}
 
-/// Filled in by later features (scan cache).
-struct RecentScansSection: View {
-    var body: some View { EmptyView() }
-}

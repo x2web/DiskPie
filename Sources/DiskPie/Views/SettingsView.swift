@@ -21,7 +21,3 @@ struct SettingsView: View {
     }
 }
 
-/// Filled in by later features.
-struct SettingsExtras: View {
-    var body: some View { EmptyView() }
-}

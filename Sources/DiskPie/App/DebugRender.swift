@@ -72,6 +72,18 @@ enum DebugAnalyze {
         let groups = DuplicateFinder.find(files, cancel: CancelFlag()) { _, _ in }
         print("-- duplicates: \(groups.count) groups, wasted \(Fmt.size(groups.reduce(0) { $0 + $1.wasted }))")
         for group in groups.prefix(3) { print(Fmt.size(group.size), group.paths) }
+        do {
+            let start = Date()
+            let data = try ScanArchive.encode(root, rootPath: path, date: Date(), partial: false)
+            let (header, copy) = try ScanArchive.decode(data)
+            print("-- archive: \(Fmt.size(Int64(data.count))), roundtrip \(String(format: "%.2f", Date().timeIntervalSince(start))) s, root \(header.rootPath), size match \(copy.size == root.size), count match \(copy.fileCount == root.fileCount)")
+            if let victim = Analyses.largestFiles(in: copy, limit: 1).first { victim.parent?.applyDelta(size: -victim.size, count: -1); victim.parent?.children.removeAll { $0 === victim } }
+            let changes = Analyses.changes(current: root, previous: copy, rootPath: path, threshold: 1_000_000)
+            print("-- changes vs copy without largest file: \(changes.map { "\($0.path) \(Fmt.signedSize($0.delta)) new=\($0.isNew)" })")
+        } catch {
+            print("archive error \(error)")
+            return 1
+        }
         return 0
     }
 }

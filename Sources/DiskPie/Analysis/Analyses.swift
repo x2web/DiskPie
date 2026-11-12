@@ -115,3 +115,56 @@ enum Analyses {
         return top.items.map(\.value).filter { $0.size > 0 }
     }
 }
+
+struct ChangeItem: Identifiable {
+    var id: String { path }
+    let path: String
+    let oldSize: Int64
+    let newSize: Int64
+    let isDirectory: Bool
+    var delta: Int64 { newSize - oldSize }
+    var isNew: Bool { oldSize == 0 && newSize > 0 }
+    var isGone: Bool { newSize == 0 && oldSize > 0 }
+}
+
+extension Analyses {
+    /// Compares two snapshots of the same root. A folder is reported only when its change is spread
+    /// over children; otherwise the change is attributed to the child that caused it.
+    static func changes(current: FileNode, previous: FileNode, rootPath: String, threshold: Int64, limit: Int = 300) -> [ChangeItem] {
+        var result: [ChangeItem] = []
+
+        func join(_ base: String, _ name: String) -> String {
+            base.hasSuffix("/") ? base + name : base + "/" + name
+        }
+
+        @discardableResult
+        func compare(_ new: FileNode?, _ old: FileNode?, path: String) -> Int64 {
+            let newSize = new?.size ?? 0
+            let oldSize = old?.size ?? 0
+            let delta = newSize - oldSize
+            guard abs(delta) >= threshold else { return delta }
+            let isDirectory = (new ?? old)?.isContainer ?? false
+
+            var maxChild: Int64 = 0
+            if isDirectory, new?.kind != .hidden {
+                var oldChildren: [String: FileNode] = [:]
+                for child in old?.children ?? [] { oldChildren[child.name] = child }
+                for child in new?.children ?? [] {
+                    let childDelta = compare(child, oldChildren.removeValue(forKey: child.name), path: join(path, child.name))
+                    maxChild = max(maxChild, abs(childDelta))
+                }
+                for child in oldChildren.values {
+                    let childDelta = compare(nil, child, path: join(path, child.name))
+                    maxChild = max(maxChild, abs(childDelta))
+                }
+            }
+            if !isDirectory || Double(maxChild) < Double(abs(delta)) * 0.75 || new == nil || old == nil {
+                result.append(ChangeItem(path: path, oldSize: oldSize, newSize: newSize, isDirectory: isDirectory))
+            }
+            return delta
+        }
+
+        compare(current, previous, path: rootPath)
+        return Array(result.filter { $0.path != rootPath }.sorted { abs($0.delta) > abs($1.delta) }.prefix(limit))
+    }
+}

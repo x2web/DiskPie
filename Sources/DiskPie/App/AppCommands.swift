@@ -11,6 +11,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut("h", modifiers: [.command, .shift])
             Button("Сканировать загрузочный диск") { model.startScan(path: "/") }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+            Button("Сканировать от администратора…") { model.chooseFolderAndScanAsAdmin() }
             Divider()
             Button("Пересканировать") { model.rescanAll() }
                 .keyboardShortcut("r")
