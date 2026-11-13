@@ -7,15 +7,15 @@ enum FileCategory: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .video: "Видео"
-        case .audio: "Аудио"
-        case .images: "Изображения"
-        case .archives: "Архивы"
-        case .diskImages: "Образы и установщики"
-        case .documents: "Документы"
-        case .code: "Код и данные"
-        case .apps: "Приложения и пакеты"
-        case .other: "Прочее"
+        case .video: String(localized: "Video")
+        case .audio: String(localized: "Audio")
+        case .images: String(localized: "Images")
+        case .archives: String(localized: "Archives")
+        case .diskImages: String(localized: "Disk images and installers")
+        case .documents: String(localized: "Documents")
+        case .code: String(localized: "Code and data")
+        case .apps: String(localized: "Apps and bundles")
+        case .other: String(localized: "Other")
         }
     }
 

@@ -9,29 +9,29 @@ struct NodeMenu: View {
             Text("\(node.displayName) — \(Fmt.size(node.size))")
             Divider()
             if node.kind == .hidden {
-                Text("Снимки APFS, purgeable-место, системные тома")
+                Text(String(localized: "APFS snapshots, purgeable space, system volumes"))
             } else {
                 if node.isContainer && node !== model.focus {
-                    Button("Войти") { model.enter(node) }
+                    Button(String(localized: "Go Into")) { model.enter(node) }
                 }
-                Button("Открыть") { model.open(node) }
-                Button("Показать в Finder") { model.revealInFinder(node) }
-                Button("Быстрый просмотр") { model.quickLook(node) }
-                Button("Скопировать путь") { model.copyPath(node) }
+                Button(String(localized: "Open")) { model.open(node) }
+                Button(String(localized: "Show in Finder")) { model.revealInFinder(node) }
+                Button(String(localized: "Quick Look")) { model.quickLook(node) }
+                Button(String(localized: "Copy Path")) { model.copyPath(node) }
                 if node.isActionable {
                     Divider()
-                    Button(model.isInCollector(node) ? "Убрать из сборщика" : "Добавить в сборщик") {
+                    Button(model.isInCollector(node) ? String(localized: "Remove from Collector") : String(localized: "Add to Collector")) {
                         model.toggleCollector(node)
                     }
                 }
                 if node.isContainer {
-                    Button("Пересканировать папку") { model.rescan(node) }
+                    Button(String(localized: "Rescan Folder")) { model.rescan(node) }
                         .disabled(model.isScanning)
                 }
                 if node.isActionable {
                     Divider()
-                    Button("Переместить в Корзину", role: .destructive) { model.trash([node]) }
-                    Button("Удалить безвозвратно…", role: .destructive) { model.trash([node], permanently: true) }
+                    Button(String(localized: "Move to Trash"), role: .destructive) { model.trash([node]) }
+                    Button(String(localized: "Delete Permanently…"), role: .destructive) { model.trash([node], permanently: true) }
                 }
             }
         }

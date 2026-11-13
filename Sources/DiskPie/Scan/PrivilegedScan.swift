@@ -9,7 +9,7 @@ enum PrivilegedScan {
 
         var errorDescription: String? {
             switch self {
-            case .cancelled: "Отменено"
+            case .cancelled: String(localized: "Cancelled")
             case .failed(let text): text
             }
         }
@@ -40,12 +40,13 @@ enum PrivilegedScan {
     }
 
     static func run(path: String, box: ProcessBox) async throws -> (FileNode, Int) {
-        guard let executable = Bundle.main.executablePath else { throw Failure.failed("Не найден исполняемый файл") }
+        guard let executable = Bundle.main.executablePath else { throw Failure.failed(String(localized: "Executable not found")) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("diskpie-\(UUID().uuidString).dpscan").path
         defer { try? FileManager.default.removeItem(atPath: out) }
 
         let command = "\(shellQuote(executable)) --scan \(shellQuote(path)) --out \(shellQuote(out))"
-        let script = "do shell script \"\(appleScriptEscape(command))\" with prompt \"DiskPie хочет просканировать «\(appleScriptEscape(path))» с правами администратора.\" with administrator privileges"
+        let prompt = String(localized: "DiskPie wants to scan “\(path)” with administrator privileges.")
+        let script = "do shell script \"\(appleScriptEscape(command))\" with prompt \"\(appleScriptEscape(prompt))\" with administrator privileges"
 
         let (status, output) = try await runProcess("/usr/bin/osascript", ["-e", script], box: box)
         if status != 0 {

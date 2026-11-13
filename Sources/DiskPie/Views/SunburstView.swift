@@ -268,7 +268,7 @@ struct SunburstView: View {
         ctx.draw(size, at: g.center)
         ctx.draw(files, at: CGPoint(x: g.center.x, y: g.center.y + r * 0.34))
         if focus.parent == nil, let space = model.volumeSpace {
-            let free = ctx.resolve(Text("свободно \(Fmt.size(space.available))")
+            let free = ctx.resolve(Text(String(localized: "\(Fmt.size(space.available)) free"))
                 .font(.system(size: max(9, r * 0.1), weight: .medium)).foregroundStyle(.green))
             ctx.draw(free, at: CGPoint(x: g.center.x, y: g.center.y + r * 0.52))
         }
@@ -296,7 +296,7 @@ struct HoverTooltip: View {
                 }
             } else if let aggregate = model.hoveredAggregate {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Мелкие объекты: \(Fmt.count(aggregate.count))").font(.callout.weight(.semibold))
+                    Text(String(localized: "Small items: \(Fmt.count(aggregate.count))")).font(.callout.weight(.semibold))
                     Text("\(Fmt.size(aggregate.size)) · \(Fmt.percent(aggregate.size, of: focus.size))")
                         .font(.caption).foregroundStyle(.secondary)
                 }

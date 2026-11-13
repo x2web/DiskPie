@@ -18,19 +18,19 @@ enum DeniedReason: Int, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .permissions: "Права доступа (только root или другой владелец)"
-        case .systemProtection: "Защита macOS: SIP, хранилища данных, политики"
-        case .missing: "Исчезли во время скана"
-        case .other: "Другие ошибки"
+        case .permissions: String(localized: "Permissions (root or another owner only)")
+        case .systemProtection: String(localized: "macOS protection: SIP, data vaults, policies")
+        case .missing: String(localized: "Disappeared during the scan")
+        case .other: String(localized: "Other errors")
         }
     }
 
     var hint: String {
         switch self {
-        case .permissions: "Прочитаются при «Сканировать от администратора…»."
-        case .systemProtection: "Закрыты ядром даже для root с полным доступом к диску: защищённые системой папки, контейнеры системных приложений, данные управляемых профилей (MDM). Обойти нельзя и не нужно."
-        case .missing: "Временные файлы, удалённые между чтением каталога и входом в него."
-        case .other: "Ошибки чтения файловой системы."
+        case .permissions: String(localized: "Readable with “Scan as Administrator…”.")
+        case .systemProtection: String(localized: "Blocked by the kernel even for root with Full Disk Access: system-protected folders, system app containers, managed profile (MDM) data. This cannot and should not be bypassed.")
+        case .missing: String(localized: "Temporary files removed between listing a folder and entering it.")
+        case .other: String(localized: "File system read errors.")
         }
     }
 

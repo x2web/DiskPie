@@ -28,8 +28,8 @@ struct ScanningPlaceholder: View {
     var body: some View {
         VStack(spacing: 14) {
             ProgressView()
-            Text("Читаю \(model.rootPath)…").foregroundStyle(.secondary)
-            Button("Отмена") { model.closeScan() }
+            Text(String(localized: "Reading \(model.rootPath)…")).foregroundStyle(.secondary)
+            Button(String(localized: "Cancel")) { model.closeScan() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

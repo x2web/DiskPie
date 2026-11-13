@@ -14,7 +14,7 @@ private struct ScopeHeader: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "scope").foregroundStyle(.secondary)
-            Text(text ?? "В «\(focus.displayName)»").lineLimit(1).truncationMode(.middle)
+            Text(text ?? String(localized: "In “\(focus.displayName)”")).lineLimit(1).truncationMode(.middle)
             Spacer()
         }
         .font(.caption)
@@ -53,8 +53,8 @@ struct LargestPanel: View {
             if let focus = model.focus {
                 ScopeHeader(focus: focus)
                 Picker("", selection: $showFolders) {
-                    Text("Файлы").tag(false)
-                    Text("Папки").tag(true)
+                    Text(String(localized: "Files")).tag(false)
+                    Text(String(localized: "Folders")).tag(true)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -82,7 +82,7 @@ struct TypesPanel: View {
                 ScopeHeader(focus: focus)
                 let total = max(1, stats.reduce(Int64(0)) { $0 + $1.size })
                 List(selection: $selected) {
-                    Section("Категории") {
+                    Section(String(localized: "Categories")) {
                         ForEach(stats) { stat in
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack {
@@ -94,14 +94,14 @@ struct TypesPanel: View {
                                 }
                                 SizeBar(fraction: Double(stat.size) / Double(total), color: stat.category.color)
                                     .padding(.leading, 24)
-                                Text("\(Fmt.count(stat.count)) шт. · \(Fmt.percent(stat.size, of: total))")
+                                Text("\(Fmt.items(stat.count)) · \(Fmt.percent(stat.size, of: total))")
                                     .font(.caption).foregroundStyle(.secondary).padding(.leading, 24)
                             }
                             .tag(stat.category)
                         }
                     }
                     if let selected {
-                        Section("Крупнейшие: \(selected.title.lowercased())") {
+                        Section(String(localized: "Largest: \(selected.title.lowercased())")) {
                             ForEach(topRows[selected] ?? []) { row in
                                 if let node = row.ref.node {
                                     NodeRowView(node: node, total: 0, detail: row.detail)
@@ -140,16 +140,16 @@ struct OldFilesPanel: View {
         VStack(spacing: 0) {
             if let focus = model.focus {
                 ScopeHeader(focus: focus)
-                Picker("Не менялись и не открывались дольше", selection: $months) {
-                    Text("3 мес").tag(3)
-                    Text("6 мес").tag(6)
-                    Text("1 год").tag(12)
-                    Text("2 года").tag(24)
-                    Text("3 года").tag(36)
+                Picker(String(localized: "Not modified or opened for"), selection: $months) {
+                    Text(String(localized: "3 months")).tag(3)
+                    Text(String(localized: "6 months")).tag(6)
+                    Text(String(localized: "1 year")).tag(12)
+                    Text(String(localized: "2 years")).tag(24)
+                    Text(String(localized: "3 years")).tag(36)
                 }
                 .pickerStyle(.menu)
                 .padding(.horizontal, 12)
-                Text("\(Fmt.files(count)) на \(Fmt.size(total)). Дата открытия берётся из atime, macOS обновляет её не всегда.")
+                Text(String(localized: "\(Fmt.files(count)), \(Fmt.size(total)). The last-opened date comes from atime, which macOS does not always update."))
                     .font(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12).padding(.vertical, 6)
@@ -184,23 +184,23 @@ struct DevCachesPanel: View {
                 }
             } header: {
                 HStack {
-                    Text("Кэши инструментов")
+                    Text(String(localized: "Tool caches"))
                     Spacer()
                     if store.isMeasuring {
                         ProgressView().controlSize(.mini)
                     } else {
-                        Button("Измерить") { store.measure() }.buttonStyle(.borderless)
+                        Button(String(localized: "Measure")) { store.measure() }.buttonStyle(.borderless)
                     }
                 }
             } footer: {
                 if store.measuredAt != nil {
-                    Text("Можно очистить: \(Fmt.size(store.total)). Содержимое уходит в Корзину.")
+                    Text(String(localized: "Cleanable: \(Fmt.size(store.total)). Contents go to the Trash."))
                 }
             }
 
-            Section("Сборки и зависимости в проектах") {
+            Section(String(localized: "Builds and dependencies in projects")) {
                 if artifacts.isEmpty {
-                    Text("node_modules, Pods, .build, DerivedData и т. п. в текущем скане не найдены")
+                    Text(String(localized: "No node_modules, Pods, .build, DerivedData or similar in this scan"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(artifacts) { row in
@@ -235,16 +235,16 @@ private struct DevCacheRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(item.size.map(Fmt.size) ?? "…").monospacedDigit().foregroundStyle(.secondary)
                 if item.cleanable, (item.size ?? 0) > 0 {
-                    Button("Очистить") { model.cleanContents(of: item) }
+                    Button(String(localized: "Clean Up")) { model.cleanContents(of: item) }
                         .controlSize(.small)
                 }
             }
         }
         .contextMenu {
-            Button("Показать в Finder") {
+            Button(String(localized: "Show in Finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
             }
-            Button("Скопировать путь") {
+            Button(String(localized: "Copy Path")) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(item.path, forType: .string)
             }
@@ -261,18 +261,18 @@ struct DuplicatesPanel: View {
             if let focus = model.focus {
                 ScopeHeader(focus: focus)
                 HStack {
-                    Picker("От", selection: $search.minSize) {
-                        Text("100 КБ").tag(Int64(100_000))
-                        Text("1 МБ").tag(Int64(1_000_000))
-                        Text("10 МБ").tag(Int64(10_000_000))
-                        Text("100 МБ").tag(Int64(100_000_000))
+                    Picker(String(localized: "Min size"), selection: $search.minSize) {
+                        Text(String(localized: "100 KB")).tag(Int64(100_000))
+                        Text(String(localized: "1 MB")).tag(Int64(1_000_000))
+                        Text(String(localized: "10 MB")).tag(Int64(10_000_000))
+                        Text(String(localized: "100 MB")).tag(Int64(100_000_000))
                     }
                     .frame(width: 130)
                     Spacer()
                     if search.phase == .running {
-                        Button("Стоп") { search.cancel() }
+                        Button(String(localized: "Stop")) { search.cancel() }
                     } else {
-                        Button("Найти") { search.start(in: focus) }
+                        Button(String(localized: "Find")) { search.start(in: focus) }
                             .buttonStyle(.borderedProminent)
                             .disabled(model.isScanning)
                     }
@@ -281,8 +281,8 @@ struct DuplicatesPanel: View {
 
                 switch search.phase {
                 case .idle:
-                    ContentUnavailableView("Поиск дубликатов", systemImage: "doc.on.doc",
-                                           description: Text("Сравнивает файлы одинакового размера по содержимому (SHA-256). Жёсткие ссылки не считаются дубликатами; клоны APFS могут не занимать места."))
+                    ContentUnavailableView(String(localized: "Find duplicates"), systemImage: "doc.on.doc",
+                                           description: Text(String(localized: "Compares files of equal size by content (SHA-256). Hard links are not duplicates; APFS clones may take no extra space.")))
                 case .running:
                     VStack(spacing: 8) {
                         ProgressView(value: search.fraction)
@@ -291,8 +291,8 @@ struct DuplicatesPanel: View {
                     .padding(16)
                     Spacer()
                 case .done:
-                    Text(search.groups.isEmpty ? "Дубликатов не найдено" :
-                            "\(search.groups.count) групп, лишнего \(Fmt.size(search.totalWasted))")
+                    Text(search.groups.isEmpty ? String(localized: "No duplicates found") :
+                            String(localized: "Groups: \(Fmt.count(search.groups.count)), reclaimable \(Fmt.size(search.totalWasted))"))
                         .font(.callout)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -306,16 +306,16 @@ struct DuplicatesPanel: View {
                                 HStack {
                                     Text("\(group.paths.count) × \(Fmt.size(group.size))")
                                     Spacer()
-                                    Button("Оставить первый") {
+                                    Button(String(localized: "Keep First")) {
                                         let extra = search.extraCopies(in: group)
                                         if extra.isEmpty {
-                                            model.showMessage("Группа устарела", "Первая копия изменилась или удалена. Запустите поиск заново.")
+                                            model.showMessage(String(localized: "Group is out of date"), String(localized: "The first copy was changed or removed. Run the search again."))
                                         } else {
                                             model.trash(paths: extra)
                                         }
                                     }
                                     .buttonStyle(.borderless)
-                                    .help("Остальные копии — в Корзину")
+                                    .help(String(localized: "Move the other copies to the Trash"))
                                 }
                             }
                         }
@@ -339,10 +339,10 @@ private struct DuplicateRow: View {
         .contentShape(Rectangle())
         .onTapGesture { if let node = model.node(atPath: path) { model.reveal(node) } }
         .contextMenu {
-            Button("Показать в Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
-            Button("Быстрый просмотр") { model.quickLookURL = URL(fileURLWithPath: path) }
+            Button(String(localized: "Show in Finder")) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
+            Button(String(localized: "Quick Look")) { model.quickLookURL = URL(fileURLWithPath: path) }
             Divider()
-            Button("Переместить в Корзину", role: .destructive) { model.trash(paths: [path]) }
+            Button(String(localized: "Move to Trash"), role: .destructive) { model.trash(paths: [path]) }
         }
     }
 }

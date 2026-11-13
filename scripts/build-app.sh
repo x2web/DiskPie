@@ -19,6 +19,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/DiskPie" "$APP/Contents/MacOS/DiskPie"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [[ -f Resources/AppIcon.icns ]] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp -R Resources/*.lproj "$APP/Contents/Resources/"
 
 IDENTITY_FILE=".signing-identity"
 if [[ -n "${DISKPIE_SIGN_IDENTITY:-}" ]]; then

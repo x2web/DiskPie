@@ -13,13 +13,13 @@ struct StartView: View {
                         .foregroundStyle(.linearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("DiskPie").font(.largeTitle.bold())
-                        Text("Что занимает место на диске").foregroundStyle(.secondary)
+                        Text(String(localized: "What is taking up your disk")).foregroundStyle(.secondary)
                     }
                 }
 
                 if !model.hasFullDiskAccess { AccessBanner() }
 
-                section("Диски") {
+                section(String(localized: "Disks")) {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 12)], spacing: 12) {
                         ForEach(volumes) { volume in
                             VolumeCard(volume: volume) { model.startScan(path: volume.path) }
@@ -27,18 +27,18 @@ struct StartView: View {
                     }
                 }
 
-                section("Папки") {
+                section(String(localized: "Folders")) {
                     HStack(spacing: 10) {
                         Button { model.startScan(path: NSHomeDirectory()) } label: {
-                            Label("Домашняя папка", systemImage: "house")
+                            Label(String(localized: "Home Folder"), systemImage: "house")
                         }
                         Button { model.chooseFolderAndScan() } label: {
-                            Label("Выбрать папку…", systemImage: "folder")
+                            Label(String(localized: "Choose Folder…"), systemImage: "folder")
                         }
                         StartExtraButtons()
                     }
                     .controlSize(.large)
-                    Text("Папку можно перетащить прямо в окно.").font(.callout).foregroundStyle(.secondary)
+                    Text(String(localized: "You can also drag a folder onto this window.")).font(.callout).foregroundStyle(.secondary)
                 }
 
                 RecentScansSection()
@@ -82,7 +82,7 @@ struct VolumeCard: View {
                         else if volume.isRemovable || !volume.isInternal { Image(systemName: "externaldrive").foregroundStyle(.secondary) }
                     }
                     SizeBar(fraction: volume.fraction, color: volume.fraction > 0.9 ? .red : volume.fraction > 0.75 ? .orange : .accentColor)
-                    Text("Занято \(Fmt.size(volume.used)) из \(Fmt.size(volume.total)) · свободно \(Fmt.size(volume.available))")
+                    Text(String(localized: "\(Fmt.size(volume.used)) used of \(Fmt.size(volume.total)) · \(Fmt.size(volume.available)) free"))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }

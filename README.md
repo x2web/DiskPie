@@ -2,13 +2,13 @@
 
 A native macOS disk usage analyzer. It scans a disk or folder and shows where the space went as a sunburst (rings) or a treemap. Click into folders, click the center to go back up. Hover a segment to see its path; right-click it to reveal it in Finder or move it to the Trash.
 
-<p>
-  <img src="docs/icon.png" width="96" alt="DiskPie icon"><br>
-  <img src="docs/sunburst.png" width="420" alt="Sunburst view">
-  <img src="docs/treemap.png" width="420" alt="Treemap view">
-</p>
+<img src="docs/icon.png" width="96" alt="DiskPie icon">
 
-> The interface is in Russian.
+![Sunburst view with the File Types panel](docs/screenshot-sunburst.png)
+
+![Treemap view with the Largest panel](docs/screenshot-treemap.png)
+
+The interface is available in English and Russian and follows the macOS language setting.
 
 ## Download
 
@@ -97,6 +97,21 @@ DiskPie --analyze <folder>                                          # print insp
 DiskPie --denied <folder>                                           # list unreadable folders grouped by reason
 DiskPie --scan <folder> --out <file>                                # full scan into a snapshot file
 ```
+
+Launch arguments for demos and screenshots:
+
+```bash
+open build/DiskPie.app --args -AppleLanguages "(en)" --open-path /Applications/Xcode.app --view treemap --tab largest --no-save
+```
+
+- `--open-path`: start scanning the folder.
+- `--view`: `sunburst` or `treemap`.
+- `--tab`: `contents`, `largest`, `types`, `old`, `changes`, `dev`, `duplicates` or `collector`.
+- `--no-save`: do not keep a snapshot.
+
+### Localization
+
+English is the source language: UI strings live in the code as `String(localized:)`. The Russian translation is in `Resources/ru.lproj/Localizable.strings`, keyed by the English text; `InfoPlist.strings` holds the privacy prompts. Plural forms are chosen in `Fmt` according to the UI language.
 
 ## Layout
 

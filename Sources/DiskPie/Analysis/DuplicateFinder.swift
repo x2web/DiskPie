@@ -34,7 +34,7 @@ enum DuplicateFinder {
         for (index, (size, paths)) in candidates.enumerated() {
             if cancel.isCancelled { break }
             if index % 8 == 0 {
-                progress("Сравниваю файлы по \(Fmt.size(size))", Double(index) / Double(max(1, candidates.count)))
+                progress(String(localized: "Comparing \(Fmt.size(size)) files"), Double(index) / Double(max(1, candidates.count)))
             }
             var byLength: [Int64: [String]] = [:]
             for (path, length) in uniqueInodes(paths) { byLength[length, default: []].append(path) }
@@ -133,7 +133,7 @@ final class DuplicateSearch {
         groups = []
         phase = .running
         fraction = 0
-        status = "Файлов-кандидатов: \(Fmt.count(files.count))"
+        status = String(localized: "Candidate files: \(Fmt.count(files.count))")
         let flag = CancelFlag()
         self.flag = flag
         Task.detached(priority: .utility) { [self] in

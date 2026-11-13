@@ -1,0 +1,5 @@
+"NSDesktopFolderUsageDescription" = "DiskPie считает, сколько места занимают файлы на Рабочем столе.";
+"NSDocumentsFolderUsageDescription" = "DiskPie считает, сколько места занимают файлы в Документах.";
+"NSDownloadsFolderUsageDescription" = "DiskPie считает, сколько места занимают файлы в Загрузках.";
+"NSRemovableVolumesUsageDescription" = "DiskPie считает, сколько места занимают файлы на съёмных дисках.";
+"NSNetworkVolumesUsageDescription" = "DiskPie считает, сколько места занимают файлы на сетевых дисках.";

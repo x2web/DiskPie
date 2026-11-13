@@ -6,12 +6,12 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var model = model
         Form {
-            Stepper("Колец в диаграмме: \(model.ringDepth)", value: $model.ringDepth, in: 3...9)
-            LabeledContent("Полный доступ к диску") {
+            Stepper(String(localized: "Rings in the chart: \(Fmt.count(model.ringDepth))"), value: $model.ringDepth, in: 3...9)
+            LabeledContent(String(localized: "Full Disk Access")) {
                 HStack {
-                    Text(model.hasFullDiskAccess ? "включён" : "выключен")
+                    Text(model.hasFullDiskAccess ? String(localized: "on") : String(localized: "off"))
                         .foregroundStyle(model.hasFullDiskAccess ? .green : .orange)
-                    Button("Настроить…") { model.showOnboarding = true }
+                    Button(String(localized: "Set Up…")) { model.showOnboarding = true }
                 }
             }
             SettingsExtras()

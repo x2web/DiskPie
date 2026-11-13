@@ -198,7 +198,7 @@ struct TreemapView: View {
 
     private func drawLabel(in ctx: inout GraphicsContext, _ item: TreeRect) {
         guard item.rect.width > 44, item.rect.height > 15 else { return }
-        let title = item.node?.name ?? "\(Fmt.count(item.count)) мелких"
+        let title = item.node?.name ?? String(localized: "\(Fmt.count(item.count)) small")
         let hasChildrenDrawn = item.node?.isContainer == true && item.rect.width > 60 && item.rect.height > 40 && item.depth < 3
         let text = ctx.resolve(
             Text(hasChildrenDrawn ? title : "\(title)  \(Fmt.size(item.size))")

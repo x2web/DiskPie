@@ -9,12 +9,12 @@ struct AccessBanner: View {
                 .font(.title2)
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Нет полного доступа к диску").font(.headline)
-                Text("Почта, Сообщения, Safari, контейнеры приложений и часть Library не будут посчитаны.")
+                Text(String(localized: "No Full Disk Access")).font(.headline)
+                Text(String(localized: "Mail, Messages, Safari, app containers and parts of Library will not be counted."))
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Как включить") { model.showOnboarding = true }
+            Button(String(localized: "How to Enable")) { model.showOnboarding = true }
         }
         .padding(12)
         .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
@@ -32,34 +32,34 @@ struct AccessOnboardingView: View {
                     .font(.system(size: 34))
                     .foregroundStyle(model.hasFullDiskAccess ? .green : .orange)
                 VStack(alignment: .leading) {
-                    Text("Доступ ко всему диску").font(.title2.bold())
-                    Text(model.hasFullDiskAccess ? "Включён — DiskPie видит все папки." : "Сейчас выключен")
+                    Text(String(localized: "Full Disk Access")).font(.title2.bold())
+                    Text(model.hasFullDiskAccess ? String(localized: "Enabled: DiskPie can see every folder.") : String(localized: "Currently off"))
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Text("macOS не даёт приложениям читать защищённые папки без разрешения. Без него сканирование работает, но такие папки отображаются как «нет доступа», а сумма получается меньше реальной.")
+            Text(String(localized: "macOS does not let apps read protected folders without permission. Scanning still works without it, but those folders show up as “no access” and the total comes out lower than it really is."))
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 8) {
-                step(1, "Откройте Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску.")
-                step(2, "Нажмите «+» и выберите DiskPie, или перетащите приложение в список.")
-                step(3, "Включите переключатель напротив DiskPie и вернитесь сюда.")
+                step(1, String(localized: "Open System Settings → Privacy & Security → Full Disk Access."))
+                step(2, String(localized: "Click “+” and choose DiskPie, or drag the app into the list."))
+                step(3, String(localized: "Turn on the switch next to DiskPie and come back here."))
             }
 
-            Text("Даже с полным доступом часть системных папок читает только root. Для них есть «Сканировать от администратора…» в меню «Файл».")
+            Text(String(localized: "Even with Full Disk Access some system folders are readable by root only. For those, use “Scan as Administrator…” in the File menu."))
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
-                Button("Открыть настройки") { DiskAccess.openFullDiskAccessSettings() }
+                Button(String(localized: "Open Settings")) { DiskAccess.openFullDiskAccessSettings() }
                     .keyboardShortcut(.defaultAction)
-                Button("Показать DiskPie в Finder") {
+                Button(String(localized: "Show DiskPie in Finder")) {
                     NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
                 }
                 Spacer()
-                Button("Проверить") { model.refreshAccessStatus() }
-                Button("Готово") { dismiss() }
+                Button(String(localized: "Check Again")) { model.refreshAccessStatus() }
+                Button(String(localized: "Done")) { dismiss() }
             }
         }
         .padding(24)

@@ -52,10 +52,11 @@ enum Analyses {
         }
     }
 
+    /// App bundles and other packages count as single items and are not opened.
     static func largestFiles(in root: FileNode, limit: Int = 300) -> [FileNode] {
         var top = TopK<FileNode>(limit: limit)
-        walk(root) { node in
-            if node.isFileLike || node.kind == .package { top.insert(node.size, node) }
+        walk(root, descend: { $0.kind != .package || $0 === root }) { node in
+            if node.isFileLike || (node.kind == .package && node !== root) { top.insert(node.size, node) }
         }
         return top.items.map(\.value)
     }

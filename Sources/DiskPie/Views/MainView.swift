@@ -28,14 +28,14 @@ struct MainToolbar: ToolbarContent {
         @Bindable var model = model
         ToolbarItemGroup(placement: .navigation) {
             Button { model.goBack() } label: { Image(systemName: "chevron.left") }
-                .help("Назад").disabled(!model.canGoBack)
+                .help(String(localized: "Back")).disabled(!model.canGoBack)
             Button { model.goForward() } label: { Image(systemName: "chevron.right") }
-                .help("Вперёд").disabled(!model.canGoForward)
+                .help(String(localized: "Forward")).disabled(!model.canGoForward)
             Button { model.goUp() } label: { Image(systemName: "arrow.up") }
-                .help("Наверх (Esc)").disabled(!model.canGoUp)
+                .help(String(localized: "Enclosing folder (Esc)")).disabled(!model.canGoUp)
         }
         ToolbarItemGroup(placement: .primaryAction) {
-            Picker("Вид", selection: $model.viewMode) {
+            Picker(String(localized: "View"), selection: $model.viewMode) {
                 ForEach(ViewMode.allCases) { mode in
                     Image(systemName: mode.icon).help(mode.title).tag(mode)
                 }
@@ -43,23 +43,23 @@ struct MainToolbar: ToolbarContent {
             .pickerStyle(.segmented)
 
             Menu {
-                Button("Домашняя папка") { model.startScan(path: NSHomeDirectory()) }
-                Button("Загрузочный диск") { model.startScan(path: "/") }
-                Button("Выбрать папку…") { model.chooseFolderAndScan() }
+                Button(String(localized: "Home Folder")) { model.startScan(path: NSHomeDirectory()) }
+                Button(String(localized: "Startup Disk")) { model.startScan(path: "/") }
+                Button(String(localized: "Choose Folder…")) { model.chooseFolderAndScan() }
                 ScanMenuExtras()
                 Divider()
-                Button("Закрыть скан") { model.closeScan() }
+                Button(String(localized: "Close Scan")) { model.closeScan() }
             } label: {
                 Image(systemName: "externaldrive")
             }
-            .help("Что сканировать")
+            .help(String(localized: "What to scan"))
 
             if model.isScanning {
                 Button { model.cancelScan() } label: { Image(systemName: "stop.circle") }
-                    .help("Остановить")
+                    .help(String(localized: "Stop"))
             } else {
                 Button { model.rescanAll() } label: { Image(systemName: "arrow.clockwise") }
-                    .help("Пересканировать (⌘R)")
+                    .help(String(localized: "Rescan (⌘R)"))
             }
             ToolbarExtras()
         }
@@ -123,7 +123,7 @@ struct HoverLine: View {
         HStack(spacing: 8) {
             if let node = model.hovered ?? model.selection {
                 NodeIcon(node: node)
-                Text(node.kind == .hidden ? "Снимки APFS, purgeable-место, системные тома и то, что не удалось прочитать" : node.path)
+                Text(node.kind == .hidden ? String(localized: "APFS snapshots, purgeable space, system volumes and anything that could not be read") : node.path)
                     .lineLimit(1).truncationMode(.middle)
                     .textSelection(.enabled)
                 Spacer(minLength: 8)
@@ -134,14 +134,16 @@ struct HoverLine: View {
                 }
             } else if let aggregate = model.hoveredAggregate {
                 Image(systemName: "square.stack.3d.up").foregroundStyle(.secondary).frame(width: 18)
-                Text("\(Fmt.count(aggregate.count)) мелких объектов в \(aggregate.parent.path)")
+                Text(String(localized: "Small items in \(aggregate.parent.path): \(Fmt.count(aggregate.count))"))
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
                 Text(Fmt.size(aggregate.size)).bold().monospacedDigit()
                 Text(Fmt.percent(aggregate.size, of: focusSize)).foregroundStyle(.secondary)
             } else {
                 Image(systemName: "cursorarrow.rays").foregroundStyle(.tertiary).frame(width: 18)
-                Text("Наведите на сегмент — здесь появится путь. Клик — внутрь, клик по центру — наверх, правая кнопка — действия.")
+                Text(model.viewMode == .sunburst
+                     ? String(localized: "Hover a segment to see its path here. Click to go in, click the center to go up, right-click for actions.")
+                     : String(localized: "Hover a tile to see its path here. Click to go in, press Esc to go up, right-click for actions."))
                     .foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
             }
@@ -200,21 +202,21 @@ struct StatusBar: View {
                 Text(model.progress.current)
                     .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 Spacer()
-                Button("Остановить") { model.cancelScan() }.controlSize(.small)
+                Button(String(localized: "Stop")) { model.cancelScan() }.controlSize(.small)
             } else if let root = model.root {
-                Text("Всего \(Fmt.size(root.size)) · \(Fmt.files(root.fileCount))").monospacedDigit()
+                Text(String(localized: "Total \(Fmt.size(root.size)) · \(Fmt.files(root.fileCount))")).monospacedDigit()
                 if let duration = model.scanDuration {
-                    Text("за \(Fmt.duration(duration))").foregroundStyle(.secondary)
+                    Text(String(localized: "in \(Fmt.duration(duration))")).foregroundStyle(.secondary)
                 }
                 if model.isPartial {
-                    Label("скан прерван", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                    Label(String(localized: "scan stopped"), systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
                 StatusExtras()
                 Spacer()
                 if model.cloneOvercount > 0 {
-                    Label("+\(Fmt.size(model.cloneOvercount)) сверх занятого", systemImage: "square.on.square")
+                    Label(String(localized: "+\(Fmt.size(model.cloneOvercount)) over used space"), systemImage: "square.on.square")
                         .foregroundStyle(.secondary)
-                        .help("Сумма больше занятого места на томе: клоны APFS (копии файлов без дублирования данных) учитываются для каждой копии.")
+                        .help(String(localized: "The total exceeds the volume's used space: APFS clones (copies that share data) are counted for every copy."))
                 }
                 if model.progress.inaccessible > 0 {
                     DeniedButton()
@@ -226,7 +228,7 @@ struct StatusBar: View {
                     Button {
                         model.showOnboarding = true
                     } label: {
-                        Label("Нет полного доступа", systemImage: "exclamationmark.shield")
+                        Label(String(localized: "No Full Disk Access"), systemImage: "exclamationmark.shield")
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.orange)
@@ -250,9 +252,9 @@ struct FreeSpaceLabel: View {
         HStack(spacing: 6) {
             SizeBar(fraction: used, color: used > 0.9 ? .red : used > 0.75 ? .orange : .green)
                 .frame(width: 60)
-            Text("свободно \(Fmt.size(available)) из \(Fmt.size(total))").monospacedDigit()
+            Text(String(localized: "\(Fmt.size(available)) free of \(Fmt.size(total))")).monospacedDigit()
         }
-        .help("Свободное место на томе, как его считает Finder: вместе с purgeable-местом, которое macOS освобождает по требованию.")
+        .help(String(localized: "Free space on the volume as Finder counts it, including purgeable space that macOS frees on demand."))
     }
 }
 
@@ -264,11 +266,11 @@ struct DeniedButton: View {
         Button {
             shown.toggle()
         } label: {
-            Label("нет доступа: \(Fmt.count(model.progress.inaccessible))", systemImage: "lock")
+            Label(String(localized: "no access: \(Fmt.count(model.progress.inaccessible))"), systemImage: "lock")
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .help("Папки, которые не удалось прочитать. Нажмите, чтобы увидеть какие и почему.")
+        .help(String(localized: "Folders that could not be read. Click to see which ones and why."))
         .popover(isPresented: $shown, arrowEdge: .top) { DeniedListView() }
     }
 }
@@ -279,9 +281,9 @@ struct DeniedListView: View {
     var body: some View {
         let groups = DeniedReason.group(model.deniedPaths)
         VStack(alignment: .leading, spacing: 0) {
-            Text("Не удалось прочитать").font(.headline).padding(12)
+            Text(String(localized: "Could not read")).font(.headline).padding(12)
             if groups.isEmpty {
-                Text("Список недоступен для этого скана (снимок или скан от администратора).")
+                Text(String(localized: "The list is not available for this scan (saved scan or administrator scan)."))
                     .foregroundStyle(.secondary).padding([.horizontal, .bottom], 12)
             } else {
                 List {
@@ -293,10 +295,10 @@ struct DeniedListView: View {
                                     .font(.callout)
                                     .textSelection(.enabled)
                                     .contextMenu {
-                                        Button("Показать в Finder") {
+                                        Button(String(localized: "Show in Finder")) {
                                             NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
                                         }
-                                        Button("Скопировать путь") {
+                                        Button(String(localized: "Copy Path")) {
                                             NSPasteboard.general.clearContents()
                                             NSPasteboard.general.setString(item.path, forType: .string)
                                         }
@@ -313,7 +315,7 @@ struct DeniedListView: View {
                 }
                 if groups.contains(where: { $0.reason == .permissions }), !model.rootPath.isEmpty {
                     Divider()
-                    Button("Пересканировать от администратора") { model.scanAsAdmin(path: model.rootPath) }
+                    Button(String(localized: "Rescan as Administrator")) { model.scanAsAdmin(path: model.rootPath) }
                         .padding(12)
                 }
             }

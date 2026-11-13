@@ -5,7 +5,7 @@ import SwiftUI
 enum ViewMode: String, CaseIterable, Identifiable {
     case sunburst, treemap
     var id: Self { self }
-    var title: String { self == .sunburst ? "Кольца" : "Плитки" }
+    var title: String { self == .sunburst ? String(localized: "Rings") : String(localized: "Tiles") }
     var icon: String { self == .sunburst ? "chart.pie" : "square.grid.3x3.square" }
 }
 
@@ -102,11 +102,31 @@ final class AppModel {
 
     // MARK: Launch & access
 
+    /// Skips saving snapshots; set by `--no-save` for demo and screenshot runs.
+    @ObservationIgnored private var savesSnapshots = true
+
     func onLaunch() {
         refreshAccessStatus()
         if !hasFullDiskAccess && !UserDefaults.standard.bool(forKey: "onboardingShown") {
             UserDefaults.standard.set(true, forKey: "onboardingShown")
             showOnboarding = true
+        }
+        applyLaunchArguments()
+    }
+
+    /// `--open-path <folder>`, `--view sunburst|treemap`, `--tab <inspector tab>`, `--no-save`.
+    private func applyLaunchArguments() {
+        let args = CommandLine.arguments
+        func value(_ flag: String) -> String? {
+            guard let i = args.firstIndex(of: flag), args.count > i + 1 else { return nil }
+            return args[i + 1]
+        }
+        if args.contains("--no-save") { savesSnapshots = false }
+        if let view = value("--view").flatMap(ViewMode.init(rawValue:)) { viewMode = view }
+        if let tab = value("--tab").flatMap(InspectorTab.init(rawValue:)) { inspectorTab = tab }
+        if let path = value("--open-path") {
+            showOnboarding = false
+            startScan(path: path)
         }
     }
 
@@ -149,7 +169,7 @@ final class AppModel {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.showsHiddenFiles = true
-        panel.prompt = "Сканировать"
+        panel.prompt = String(localized: "Scan")
         panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
         return panel.runModal() == .OK ? panel.url?.path : nil
     }
@@ -235,7 +255,7 @@ final class AppModel {
     }
 
     private func didFinishScan() {
-        saveSnapshot()
+        if savesSnapshots { saveSnapshot() }
         configureWatcher()
     }
 
@@ -274,7 +294,7 @@ final class AppModel {
             } catch {
                 await MainActor.run {
                     guard expected == generation else { return }
-                    showMessage("Не удалось открыть снимок", error.localizedDescription)
+                    showMessage(String(localized: "Could not open the saved scan"), error.localizedDescription)
                 }
             }
         }
@@ -327,7 +347,7 @@ final class AppModel {
         cachedMeta = nil
         rootPath = path
         isScanning = true
-        progress = ScanProgress(current: "Сканирование с правами администратора…")
+        progress = ScanProgress(current: String(localized: "Scanning with administrator privileges…"))
         scanStarted = Date()
         generation += 1
         let ctx = ScanContext(skipPaths: [])
@@ -358,7 +378,7 @@ final class AppModel {
                     closeScan()
                     if ctx.isCancelled { return }
                     if case PrivilegedScan.Failure.cancelled = error { return }
-                    showMessage("Скан от администратора не удался", error.localizedDescription)
+                    showMessage(String(localized: "Administrator scan failed"), error.localizedDescription)
                 }
             }
         }
@@ -506,7 +526,7 @@ final class AppModel {
             cloneOvercount = -hiddenSize
             return
         }
-        let node = FileNode(name: "Системное и скрытое", kind: .hidden, size: hiddenSize)
+        let node = FileNode(name: String(localized: "System and hidden"), kind: .hidden, size: hiddenSize)
         node.parent = root
         root.children.append(node)
         root.size += hiddenSize
@@ -757,25 +777,25 @@ final class AppModel {
     func trash(paths: [String], permanently: Bool = false, title: String? = nil) {
         guard !paths.isEmpty else { return }
         if isScanning || busyWriting {
-            showMessage("Подождите", "Удаление недоступно, пока идёт сканирование или сохранение снимка.")
+            showMessage(String(localized: "Please wait"), String(localized: "Deleting is unavailable while a scan is running or a snapshot is being saved."))
             return
         }
         if let protected = paths.first(where: DiskAccess.isProtected) {
-            showMessage("Системный путь", "«\(protected)» удалять нельзя.")
+            showMessage(String(localized: "System path"), String(localized: "“\(protected)” cannot be deleted."))
             return
         }
         let nodes = paths.compactMap(node(atPath:))
         let total = nodes.reduce(Int64(0)) { $0 + $1.size }
         let names = paths.prefix(6).map { "• " + ($0 as NSString).lastPathComponent }.joined(separator: "\n")
-        let more = paths.count > 6 ? "\n…и ещё \(paths.count - 6)" : ""
-        let sizeLine = total > 0 ? "\n\nВсего: \(Fmt.size(total))" : ""
+        let more = paths.count > 6 ? String(localized: "\n…and \(Fmt.count(paths.count - 6)) more") : ""
+        let sizeLine = total > 0 ? String(localized: "\n\nTotal: \(Fmt.size(total))") : ""
 
         let alert = NSAlert()
         alert.alertStyle = permanently ? .critical : .warning
-        alert.messageText = title ?? (permanently ? "Удалить безвозвратно?" : "Переместить в Корзину?")
-        alert.informativeText = names + more + sizeLine + (permanently ? "\n\nЭто действие нельзя отменить." : "")
-        alert.addButton(withTitle: permanently ? "Удалить" : "В Корзину")
-        alert.addButton(withTitle: "Отмена")
+        alert.messageText = title ?? (permanently ? String(localized: "Delete permanently?") : String(localized: "Move to Trash?"))
+        alert.informativeText = names + more + sizeLine + (permanently ? String(localized: "\n\nThis cannot be undone.") : "")
+        alert.addButton(withTitle: permanently ? String(localized: "Delete") : String(localized: "Move to Trash"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         if permanently { alert.buttons.first?.hasDestructiveAction = true }
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
@@ -798,7 +818,7 @@ final class AppModel {
         didRemove(paths: removedPaths)
         refreshVolumeSpace()
         if !errors.isEmpty {
-            showMessage("Не всё удалось удалить", errors.prefix(10).joined(separator: "\n"))
+            showMessage(String(localized: "Some items could not be deleted"), errors.prefix(10).joined(separator: "\n"))
         }
     }
 
@@ -809,11 +829,11 @@ final class AppModel {
     /// Empties a cache folder by moving its contents to the Trash, then refreshes the tree and sizes.
     func cleanContents(of item: DevCacheItem) {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: item.path), !names.isEmpty else {
-            showMessage("Пусто", "В «\(item.title)» нечего удалять.")
+            showMessage(String(localized: "Nothing to clean"), String(localized: "“\(item.title)” is already empty."))
             return
         }
         let base = item.path.hasSuffix("/") ? item.path : item.path + "/"
-        trash(paths: names.map { base + $0 }, title: "Очистить «\(item.title)»?")
+        trash(paths: names.map { base + $0 }, title: String(localized: "Clean up “\(item.title)”?"))
         devCaches.measure()
     }
 

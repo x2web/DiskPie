@@ -3,7 +3,12 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
-    <string>ru</string>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ru</string>
+    </array>
     <key>CFBundleExecutable</key>
     <string>DiskPie</string>
     <key>CFBundleIconFile</key>
@@ -31,14 +36,14 @@
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSDesktopFolderUsageDescription</key>
-    <string>DiskPie считает, сколько места занимают файлы на Рабочем столе.</string>
+    <string>DiskPie measures how much space files on your Desktop take up.</string>
     <key>NSDocumentsFolderUsageDescription</key>
-    <string>DiskPie считает, сколько места занимают файлы в Документах.</string>
+    <string>DiskPie measures how much space files in Documents take up.</string>
     <key>NSDownloadsFolderUsageDescription</key>
-    <string>DiskPie считает, сколько места занимают файлы в Загрузках.</string>
+    <string>DiskPie measures how much space files in Downloads take up.</string>
     <key>NSRemovableVolumesUsageDescription</key>
-    <string>DiskPie считает, сколько места занимают файлы на съёмных дисках.</string>
+    <string>DiskPie measures how much space files on removable drives take up.</string>
     <key>NSNetworkVolumesUsageDescription</key>
-    <string>DiskPie считает, сколько места занимают файлы на сетевых дисках.</string>
+    <string>DiskPie measures how much space files on network drives take up.</string>
 </dict>
 </plist>

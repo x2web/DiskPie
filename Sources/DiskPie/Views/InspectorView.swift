@@ -7,14 +7,14 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .contents: "Содержимое"
-        case .largest: "Самое большое"
-        case .types: "По типам файлов"
-        case .old: "Давно не менялись"
-        case .changes: "Что изменилось"
-        case .dev: "Кэши разработчика"
-        case .duplicates: "Дубликаты"
-        case .collector: "Сборщик"
+        case .contents: String(localized: "Contents")
+        case .largest: String(localized: "Largest")
+        case .types: String(localized: "File Types")
+        case .old: String(localized: "Not Touched Lately")
+        case .changes: String(localized: "What Changed")
+        case .dev: String(localized: "Developer Caches")
+        case .duplicates: String(localized: "Duplicates")
+        case .collector: String(localized: "Collector")
         }
     }
 
@@ -87,7 +87,7 @@ struct ContentsPanel: View {
                             .onHover { inside in if inside { model.hover(node) } else { model.unhover(node) } }
                     }
                 } header: {
-                    Text("\(Fmt.count(items.count)) объектов · \(Fmt.size(focus.size))")
+                    Text(String(localized: "Items: \(Fmt.count(items.count)) · \(Fmt.size(focus.size))"))
                 }
             }
             .contextMenu(forSelectionType: ObjectIdentifier.self) { ids in
@@ -114,8 +114,8 @@ struct CollectorPanel: View {
         let _ = model.treeVersion
         VStack(spacing: 0) {
             if model.collector.isEmpty {
-                ContentUnavailableView("Сборщик пуст", systemImage: "tray",
-                                       description: Text("Добавляйте кандидатов на удаление через правую кнопку или ⌘B, а потом удалите всё разом."))
+                ContentUnavailableView(String(localized: "Collector is empty"), systemImage: "tray",
+                                       description: Text(String(localized: "Add deletion candidates from the context menu or with ⌘B, then remove them all at once.")))
             } else {
                 List {
                     ForEach(model.collector) { node in
@@ -127,7 +127,7 @@ struct CollectorPanel: View {
                                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                             }
                             .buttonStyle(.borderless)
-                            .help("Убрать из сборщика")
+                            .help(String(localized: "Remove from Collector"))
                         }
                         .contextMenu { NodeMenu(node: node) }
                     }
@@ -135,12 +135,12 @@ struct CollectorPanel: View {
                 Divider()
                 HStack {
                     VStack(alignment: .leading) {
-                        Text("Освободится \(Fmt.size(model.collectorTotal))").font(.headline)
-                        Text("\(model.collector.count) объектов").font(.caption).foregroundStyle(.secondary)
+                        Text(String(localized: "Frees \(Fmt.size(model.collectorTotal))")).font(.headline)
+                        Text(String(localized: "Items: \(Fmt.count(model.collector.count))")).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Очистить") { model.collector.removeAll() }
-                    Button("В Корзину") { model.trashCollector() }
+                    Button(String(localized: "Clean Up")) { model.collector.removeAll() }
+                    Button(String(localized: "Move to Trash")) { model.trashCollector() }
                         .buttonStyle(.borderedProminent)
                 }
                 .padding(12)
