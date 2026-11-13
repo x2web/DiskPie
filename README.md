@@ -1,77 +1,112 @@
 # DiskPie
 
-Анализатор места на диске для macOS: кольцевая диаграмма (sunburst) или плитки (treemap) по папкам с навигацией внутрь и наружу.
+A native macOS disk usage analyzer. It scans a disk or folder and shows where the space went as a sunburst (rings) or a treemap. Click into folders, click the center to go back up. Hover a segment to see its path; right-click it to reveal it in Finder or move it to the Trash.
 
-## Сборка и запуск
+<p>
+  <img src="docs/icon.png" width="96" alt="DiskPie icon"><br>
+  <img src="docs/sunburst.png" width="420" alt="Sunburst view">
+  <img src="docs/treemap.png" width="420" alt="Treemap view">
+</p>
+
+> The interface is in Russian.
+
+## Download
+
+Grab the latest `DiskPie-x.y.z.zip` from [Releases](https://github.com/x2web/DiskPie/releases), unzip it and move `DiskPie.app` to `/Applications`. Release builds are signed with a Developer ID and notarized by Apple.
+
+Requires macOS 14 Sonoma or later. Universal binary (Apple silicon and Intel).
+
+## Features
+
+- **Sunburst and treemap** views (⌘1 / ⌘2) that fill in progressively while a parallel scanner works.
+- **Navigation:** click a segment to enter it. Click the center or press Esc to go up. Breadcrumbs, back and forward (⌘[ / ⌘]).
+- **Instant path on hover**, with size, share of the parent and file count.
+- **Context menu:**
+  - open, Reveal in Finder, Quick Look (Space), copy path;
+  - add to the collector;
+  - move to Trash (⌘⌫, selection only, always confirmed), delete permanently;
+  - rescan the folder.
+- **Free space** on the volume, in the status bar and in the chart center.
+- **Inspector panels:**
+  - **Contents:** children of the current folder by size.
+  - **Largest:** biggest files or folders at any depth.
+  - **File types:** video, archives, disk images, apps and more. App bundles count as one item.
+  - **Not touched for a long time:** files older than a chosen age.
+  - **What changed:** compares the current scan with an earlier saved one and shows what grew, appeared or disappeared.
+  - **Developer caches:** Xcode DerivedData, Archives, DeviceSupport, SwiftPM, CocoaPods, Gradle, npm, Homebrew and others, with one-click cleanup to the Trash. It also lists `node_modules`, `Pods`, `.build` and similar folders found in the scan. Simulator data, runtimes, the Android SDK and Docker are only shown; their own tools should clean them.
+  - **Duplicates:** compared by exact length, then head and tail hash, then full SHA-256. Hard links are not duplicates. "Keep first" re-verifies contents before trashing anything.
+  - **Collector:** a staging area for deletion candidates with the total you will reclaim.
+- **Saved scans:** every scan is saved as a compact snapshot and can be reopened instantly from the start screen.
+- **Live updates** via FSEvents: changed folders are re-read without a full rescan.
+- **Drag a folder** onto the window to scan it.
+
+## How sizes are counted
+
+- **Allocated space** (`st_blocks × 512`), not logical size: sparse files count what they actually occupy.
+- **Hard links** are counted once.
+- **Symlinks** are not followed.
+- **Other volumes** mounted inside the scanned folder are skipped. Scanning `/` does not count the data volume twice, because firmlinks already lead into it.
+- **Hidden space:** when you scan a volume root, the gap between used space and the sum of files is shown as a gray "system and hidden" segment. It covers APFS snapshots, purgeable space, service volumes and unreadable folders.
+- **APFS clones** are counted once per copy, so the sum can exceed used space. The status bar then says by how much.
+
+## Full Disk Access
+
+Without Full Disk Access some folders cannot be read: Mail, Messages, Safari, app containers. DiskPie checks access whenever it becomes active and walks you through enabling it in System Settings → Privacy & Security → Full Disk Access.
+
+Even with Full Disk Access some system folders can still be unreadable. Click "no access" in the status bar to see which folders failed and why:
+
+- **Owned by root**, such as `/private/var/db` or the MDM profile store. Use *Scan as administrator…*: the same binary runs in a CLI mode through the standard macOS password prompt and writes a snapshot that the app opens. No helper daemon is installed.
+- **Protected by SIP**, such as Apple Intelligence model assets. These cannot be read at all.
+
+## Building from source
+
+Requires Xcode 15.3+ (Swift 5.10+).
 
 ```bash
-./scripts/build-app.sh
+./scripts/build-app.sh          # build/DiskPie.app for local use
 open build/DiskPie.app
 ```
 
-Нужен Xcode (Swift 5.10+), macOS 14+. Скрипт собирает SwiftPM-пакет, складывает `.app`, при необходимости рисует иконку (`scripts/make-icon.sh`) и подписывает бандл.
+The local build is signed with the first *Apple Development* identity found in the keychain. The identity is remembered in `.signing-identity`, which git ignores. A stable signature keeps Full Disk Access granted across rebuilds. Set `DISKPIE_SIGN_IDENTITY` to override it.
 
-Подпись берётся из `.signing-identity` (не в git). При первой сборке туда пишется первый сертификат Apple Development из связки ключей; переопределить можно переменной `DISKPIE_SIGN_IDENTITY`. Подпись должна быть стабильной: «Полный доступ к диску» в TCC привязан к ней, при смене сертификата доступ придётся выдать заново.
-
-## Управление
-
-| Действие | Как |
-|---|---|
-| Войти в папку | клик по сегменту, ⌘↓ |
-| Выйти наверх | клик по центру, Esc |
-| Путь и размер | наведение на сегмент: строка над диаграммой и подсказка у курсора |
-| Действия | правая кнопка: Finder, Быстрый просмотр, копировать путь, сборщик, Корзина, удалить безвозвратно, пересканировать папку |
-| Быстрый просмотр | пробел |
-| В Корзину | ⌘⌫ (с подтверждением) |
-| Назад / вперёд | ⌘[ / ⌘] |
-| Кольца / плитки | ⌘1 / ⌘2 |
-| Боковая панель | ⌘I |
-| Пересканировать | ⌘R |
-
-Папку можно перетащить в окно. Мелкие объекты склеиваются в серый сегмент, клик по нему открывает их папку.
-
-## Боковая панель
-
-- **Содержимое** — дети текущей папки по размеру.
-- **Самое большое** — крупнейшие файлы или папки в текущей папке на любой глубине.
-- **По типам файлов** — видео, архивы, образы, приложения и т. д.; `.app` и другие пакеты считаются одним объектом.
-- **Давно не менялись** — файлы старше выбранного срока по mtime/atime.
-- **Что изменилось** — сравнение с сохранённым сканом той же папки: что выросло, появилось, пропало.
-- **Кэши разработчика** — DerivedData, Archives, DeviceSupport, SPM, CocoaPods, Gradle, npm, Homebrew и др. с кнопкой очистки (содержимое уходит в Корзину), плюс `node_modules`, `Pods`, `.build` и подобные папки из текущего скана. Данные симуляторов, рантаймы, Android SDK и Docker только показываются: их чистят собственные инструменты.
-- **Дубликаты** — по размеру, затем по хэшу начала и конца файла, затем по полному SHA-256. Жёсткие ссылки не считаются дубликатами.
-- **Сборщик** — корзина кандидатов: накидываете объекты (⌘B), видите общий выигрыш, удаляете разом.
-
-## Как считается размер
-
-- Занятое место на диске (`st_blocks × 512`), а не логический размер: разреженные файлы считаются по факту.
-- Жёсткие ссылки учитываются один раз.
-- Симлинки не раскрываются, другие тома внутри сканируемой папки пропускаются. При скане `/` том данных не считается дважды: в него ведут firmlink'и.
-- При скане корня тома разница между занятым местом и суммой файлов показывается серым сегментом «Системное и скрытое»: снимки APFS, purgeable-место, служебные тома, нечитаемые папки.
-- Клоны APFS учитываются для каждой копии, поэтому сумма бывает больше занятого места; в строке состояния тогда видно «сверх занятого».
-
-## Доступ ко всему диску
-
-Без «Полного доступа к диску» сканирование работает, но защищённые папки (Почта, Сообщения, Safari, контейнеры приложений) получаются «нет доступа». Приложение проверяет доступ при каждой активации и показывает инструкцию с кнопкой, открывающей нужный раздел Системных настроек.
-
-Часть системных папок не читается даже с полным доступом. Для них есть «Сканировать от администратора…»: тот же бинарь запускается в CLI-режиме через стандартный запрос пароля macOS (`osascript … with administrator privileges`), пишет снимок во временный файл, приложение его открывает. Демон-помощник не устанавливается.
-
-## Снимки и живое обновление
-
-После каждого скана дерево сохраняется в `~/Library/Application Support/DiskPie/Scans` (бинарный формат, LZFSE, до 6 снимков на папку). Снимки открываются со стартового экрана мгновенно и используются для вкладки «Что изменилось».
-
-Переключатель с антенной в тулбаре включает FSEvents: изменённые папки перечитываются без полного пересканирования.
-
-## Отладочные режимы бинаря
+### Release
 
 ```bash
-DiskPie --render <папка> <out.png> [sunburst|treemap] [подпапка]   # скан тем же конвейером и отрисовка диаграммы в PNG
-DiskPie --analyze <папка>                                          # вывод аналитики панелей и проверка формата снимка
-DiskPie --scan <папка> --out <файл>                                # полный скан в файл снимка (используется для скана от администратора)
+./scripts/release.sh 1.0.0              # universal build, Developer ID, notarization, zip
+./scripts/release.sh 1.0.0 --publish    # same, plus git tag v1.0.0 and a GitHub release
 ```
 
-## Устройство
+One-time setup:
 
-- `Scan/Scanner.swift` — обход через `fts`, неглубокий режим для поэтапного скана.
-- `Scan/ScanCoordinator.swift` — корень и первый уровень читаются сразу, внуки сканируются параллельно и подвешиваются в дерево по мере готовности.
-- `Model/AppModel.swift` — состояние, навигация, удаление, снимки, FSEvents. Дерево меняется только на главном потоке; фоновые задачи ссылаются на узлы по пути.
-- `Views/` — диаграммы на `Canvas`, панели, стартовый экран.
+1. A *Developer ID Application* certificate in the login keychain.
+2. A notarytool profile:
+
+   ```bash
+   xcrun notarytool store-credentials diskpie-notary --apple-id <apple-id> --team-id <team-id>
+   ```
+
+Override the defaults with `DISKPIE_RELEASE_IDENTITY` and `DISKPIE_NOTARY_PROFILE`.
+
+### Developer flags
+
+```bash
+DiskPie --render <folder> <out.png> [sunburst|treemap] [subfolder]  # scan and render the chart offscreen
+DiskPie --analyze <folder>                                          # print inspector analyses, check snapshot format
+DiskPie --denied <folder>                                           # list unreadable folders grouped by reason
+DiskPie --scan <folder> --out <file>                                # full scan into a snapshot file
+```
+
+## Layout
+
+| Path | What it does |
+|---|---|
+| `Sources/DiskPie/Scan/Scanner.swift` | `fts` traversal with a shallow mode for progressive scans |
+| `Sources/DiskPie/Scan/ScanCoordinator.swift` | Reads the root and first level, scans grandchildren in parallel, attaches results as they finish |
+| `Sources/DiskPie/Model/AppModel.swift` | State, navigation, deletion, snapshots, FSEvents |
+| `Sources/DiskPie/Views/` | `Canvas`-based charts, panels and the start screen |
+
+The tree is mutated on the main actor only. Background work refers to nodes by path, and every tree replacement bumps a generation, so late results are dropped.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
