@@ -41,6 +41,10 @@ final class AppModel {
     var busyWriting: Bool { writers > 0 }
     /// Scanned sum above the volume's used space: APFS clones are counted once per copy.
     var cloneOvercount: Int64 = 0
+    /// Folders the last scan could not read.
+    var deniedPaths: [DeniedPath] = []
+    /// Volume holding the scanned folder.
+    var volumeSpace: (total: Int64, available: Int64)?
 
     // MARK: UI state
     var hovered: FileNode?
@@ -193,11 +197,17 @@ final class AppModel {
         backStack = []
         forwardStack = []
         cloneOvercount = 0
+        deniedPaths = []
         treeVersion += 1
+    }
+
+    func refreshVolumeSpace() {
+        volumeSpace = rootPath.isEmpty ? nil : DiskAccess.freeSpace(path: rootPath)
     }
 
     func installScanRoot(_ node: FileNode, ctx: ScanContext) {
         guard ctx === self.ctx else { return }
+        refreshVolumeSpace()
         root = node
         focus = node
         treeVersion += 1
@@ -212,6 +222,8 @@ final class AppModel {
         guard ctx === self.ctx else { return }
         stopProgressTimer()
         progress = ctx.snapshot()
+        deniedPaths = ctx.deniedPaths
+        refreshVolumeSpace()
         isPartial = ctx.isCancelled
         isScanning = false
         scanDate = Date()
@@ -294,6 +306,7 @@ final class AppModel {
         scanDuration = nil
         progress = ScanProgress(files: node.fileCount, bytes: node.size)
         links = HardLinkRegistry()
+        refreshVolumeSpace()
         if addHidden { addHiddenSpaceNode(to: node) }
         root = node
         focus = node
@@ -473,6 +486,7 @@ final class AppModel {
         update.modified = listing.modified
         replaceContents(of: node, with: update)
         restoreHiddenNode(after: node)
+        refreshVolumeSpace()
         liveChanges += 1
         for directory in newDirectories { refreshDirectory(path: directory, deep: true) }
     }
@@ -782,6 +796,7 @@ final class AppModel {
         }
         detach(removedPaths.compactMap(node(atPath:)))
         didRemove(paths: removedPaths)
+        refreshVolumeSpace()
         if !errors.isEmpty {
             showMessage("Не всё удалось удалить", errors.prefix(10).joined(separator: "\n"))
         }

@@ -267,6 +267,11 @@ struct SunburstView: View {
         }
         ctx.draw(size, at: g.center)
         ctx.draw(files, at: CGPoint(x: g.center.x, y: g.center.y + r * 0.34))
+        if focus.parent == nil, let space = model.volumeSpace {
+            let free = ctx.resolve(Text("свободно \(Fmt.size(space.available))")
+                .font(.system(size: max(9, r * 0.1), weight: .medium)).foregroundStyle(.green))
+            ctx.draw(free, at: CGPoint(x: g.center.x, y: g.center.y + r * 0.52))
+        }
         if highlighted, focus.parent != nil {
             let up = ctx.resolve(Text(Image(systemName: "arrow.up")).font(.system(size: max(10, r * 0.14), weight: .bold)).foregroundStyle(.secondary))
             ctx.draw(up, at: CGPoint(x: g.center.x, y: g.center.y - r * 0.66))

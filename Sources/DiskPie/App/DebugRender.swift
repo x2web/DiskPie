@@ -91,3 +91,19 @@ enum DebugAnalyze {
         return 0
     }
 }
+
+/// `DiskPie --denied <path>` lists folders the scan could not read, grouped by error.
+enum DebugDenied {
+    static func run(arguments: [String]) -> Int32 {
+        guard let index = arguments.firstIndex(of: "--denied"), arguments.count > index + 1 else { return 2 }
+        let path = arguments[index + 1]
+        let ctx = ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path))
+        _ = Scanner.scan(path: path, shallow: false, ctx: ctx)
+        print("full disk access: \(DiskAccess.hasFullDiskAccess())")
+        for group in DeniedReason.group(ctx.deniedPaths) {
+            print("== \(group.reason.title) (\(group.paths.count))")
+            for item in group.paths.prefix(40) { print("  \(item.path)") }
+        }
+        return 0
+    }
+}

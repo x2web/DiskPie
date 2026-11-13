@@ -71,6 +71,15 @@ enum DiskAccess {
         return (Int64(total), Int64(total - available))
     }
 
+    /// Space as Finder reports it: available includes purgeable space macOS frees on demand.
+    static func freeSpace(path: String) -> (total: Int64, available: Int64)? {
+        let keys: Set<URLResourceKey> = [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey]
+        guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: keys),
+              let total = values.volumeTotalCapacity else { return nil }
+        let available = values.volumeAvailableCapacityForImportantUsage ?? Int64(values.volumeAvailableCapacity ?? 0)
+        return (Int64(total), available)
+    }
+
     static func volumeName(for path: String) -> String? {
         try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeNameKey]).volumeName
     }

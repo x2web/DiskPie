@@ -217,9 +217,10 @@ struct StatusBar: View {
                         .help("Сумма больше занятого места на томе: клоны APFS (копии файлов без дублирования данных) учитываются для каждой копии.")
                 }
                 if model.progress.inaccessible > 0 {
-                    Label("нет доступа: \(Fmt.count(model.progress.inaccessible))", systemImage: "lock")
-                        .foregroundStyle(.secondary)
-                        .help("Папки, которые не удалось прочитать")
+                    DeniedButton()
+                }
+                if let space = model.volumeSpace {
+                    FreeSpaceLabel(total: space.total, available: space.available)
                 }
                 if !model.hasFullDiskAccess {
                     Button {
@@ -239,3 +240,84 @@ struct StatusBar: View {
     }
 }
 
+
+struct FreeSpaceLabel: View {
+    let total: Int64
+    let available: Int64
+
+    var body: some View {
+        let used = Double(total - available) / Double(max(1, total))
+        HStack(spacing: 6) {
+            SizeBar(fraction: used, color: used > 0.9 ? .red : used > 0.75 ? .orange : .green)
+                .frame(width: 60)
+            Text("свободно \(Fmt.size(available)) из \(Fmt.size(total))").monospacedDigit()
+        }
+        .help("Свободное место на томе, как его считает Finder: вместе с purgeable-местом, которое macOS освобождает по требованию.")
+    }
+}
+
+struct DeniedButton: View {
+    @Environment(AppModel.self) private var model
+    @State private var shown = false
+
+    var body: some View {
+        Button {
+            shown.toggle()
+        } label: {
+            Label("нет доступа: \(Fmt.count(model.progress.inaccessible))", systemImage: "lock")
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help("Папки, которые не удалось прочитать. Нажмите, чтобы увидеть какие и почему.")
+        .popover(isPresented: $shown, arrowEdge: .top) { DeniedListView() }
+    }
+}
+
+struct DeniedListView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let groups = DeniedReason.group(model.deniedPaths)
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Не удалось прочитать").font(.headline).padding(12)
+            if groups.isEmpty {
+                Text("Список недоступен для этого скана (снимок или скан от администратора).")
+                    .foregroundStyle(.secondary).padding([.horizontal, .bottom], 12)
+            } else {
+                List {
+                    ForEach(groups) { group in
+                        Section {
+                            ForEach(group.paths, id: \.self) { item in
+                                Text(item.path)
+                                    .lineLimit(1).truncationMode(.middle)
+                                    .font(.callout)
+                                    .textSelection(.enabled)
+                                    .contextMenu {
+                                        Button("Показать в Finder") {
+                                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                                        }
+                                        Button("Скопировать путь") {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(item.path, forType: .string)
+                                        }
+                                    }
+                            }
+                        } header: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(group.reason.title) — \(group.paths.count)")
+                                Text(group.reason.hint).font(.caption).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                if groups.contains(where: { $0.reason == .permissions }), !model.rootPath.isEmpty {
+                    Divider()
+                    Button("Пересканировать от администратора") { model.scanAsAdmin(path: model.rootPath) }
+                        .padding(12)
+                }
+            }
+        }
+        .frame(width: 560, height: 440)
+    }
+}

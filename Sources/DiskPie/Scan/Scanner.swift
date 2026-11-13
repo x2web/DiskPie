@@ -1,6 +1,11 @@
 import Darwin
 import Foundation
 
+struct DeniedPath: Sendable, Hashable {
+    let path: String
+    let code: Int32
+}
+
 struct ScanProgress: Sendable {
     var files = 0
     var dirs = 0
@@ -35,7 +40,9 @@ final class ScanContext: @unchecked Sendable {
     private let lock = NSLock()
     private var progress = ScanProgress()
     private var cancelled = false
+    private var denied: [DeniedPath] = []
     let links: HardLinkRegistry
+    static let deniedLimit = 5000
 
     init(skipPaths: Set<String>, links: HardLinkRegistry = HardLinkRegistry()) {
         self.skipPaths = skipPaths
@@ -60,6 +67,16 @@ final class ScanContext: @unchecked Sendable {
             if let current { progress.current = current }
             return cancelled
         }
+    }
+
+    func recordDenied(_ path: String, code: Int32) {
+        lock.withLock {
+            if denied.count < Self.deniedLimit { denied.append(DeniedPath(path: path, code: code)) }
+        }
+    }
+
+    var deniedPaths: [DeniedPath] {
+        lock.withLock { denied }
     }
 
     func snapshot() -> ScanProgress {
@@ -139,6 +156,7 @@ enum Scanner {
 
             case FTS_DNR, FTS_ERR:
                 inaccessible += 1
+                ctx.recordDenied(String(cString: e.fts_path), code: e.fts_errno)
                 if levels.last == level {
                     levels.removeLast()
                     let node = stack.removeLast()

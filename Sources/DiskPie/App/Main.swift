@@ -8,6 +8,7 @@ enum Entry {
             exit(MainActor.assumeIsolated { DebugRender.run(arguments: arguments) })
         }
         if arguments.contains("--scan") { exit(PrivilegedScan.runCLI(arguments: arguments)) }
+        if arguments.contains("--denied") { exit(DebugDenied.run(arguments: arguments)) }
         if arguments.contains("--analyze") { exit(DebugAnalyze.run(arguments: arguments)) }
         DiskPieApp.main()
     }
