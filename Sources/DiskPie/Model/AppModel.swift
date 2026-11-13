@@ -37,6 +37,8 @@ final class AppModel {
     var scanDuration: TimeInterval?
     var scanDate: Date?
     var busyWriting = false
+    /// Scanned sum above the volume's used space: APFS clones are counted once per copy.
+    var cloneOvercount: Int64 = 0
 
     // MARK: UI state
     var hovered: FileNode?
@@ -420,9 +422,13 @@ final class AppModel {
     }
 
     private func addHiddenSpaceNode(to root: FileNode) {
+        cloneOvercount = 0
         guard DiskAccess.isVolumeRoot(rootPath), let usage = DiskAccess.volumeUsage(path: rootPath) else { return }
         let hiddenSize = usage.used - root.size
-        guard hiddenSize > 0 else { return }
+        guard hiddenSize > 0 else {
+            cloneOvercount = -hiddenSize
+            return
+        }
         let node = FileNode(name: "Системное и скрытое", kind: .hidden, size: hiddenSize)
         node.parent = root
         root.children.append(node)
@@ -508,6 +514,11 @@ final class AppModel {
         collector.removeAll(where: isRemoved)
         backStack.removeAll(where: isRemoved)
         forwardStack.removeAll(where: isRemoved)
+        // Views may still hold removed nodes until they re-render; cut them loose so nothing walks
+        // into a freed parent.
+        for removed in removedRoots {
+            Analyses.walk(removed) { $0.parent = nil }
+        }
     }
 
     func node(atPath rawPath: String) -> FileNode? {
@@ -605,6 +616,10 @@ final class AppModel {
         if hovered != nil { hovered = nil }
         if hoveredAggregate != aggregate { hoveredAggregate = aggregate }
         contextTarget = aggregate.parent
+    }
+
+    func unhover(_ node: FileNode) {
+        if hovered === node { hovered = nil }
     }
 
     func select(_ node: FileNode?) {
@@ -737,11 +752,11 @@ final class AppModel {
 
     func rescan(_ node: FileNode) {
         guard !isScanning else { return }
-        if node.isRoot {
+        if node === root {
             rescanAll()
             return
         }
-        guard node.isContainer else { return }
+        guard node.isContainer, node.parent != nil else { return }
         let path = node.path
         let skip = skipPaths
         Task.detached(priority: .userInitiated) { [self] in

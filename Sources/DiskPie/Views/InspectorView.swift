@@ -84,7 +84,7 @@ struct ContentsPanel: View {
                     ForEach(items) { node in
                         NodeRowView(node: node, total: focus.size)
                             .tag(node.id)
-                            .onHover { inside in if inside { model.hover(node) } }
+                            .onHover { inside in if inside { model.hover(node) } else { model.unhover(node) } }
                     }
                 } header: {
                     Text("\(Fmt.count(items.count)) объектов · \(Fmt.size(focus.size))")

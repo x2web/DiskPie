@@ -28,8 +28,7 @@ enum PrivilegedScan {
         let ctx = ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path))
         let root = Scanner.scan(path: path, shallow: false, ctx: ctx)
         do {
-            let data = try ScanArchive.encode(root, rootPath: path, date: Date(), partial: false)
-            try data.write(to: URL(fileURLWithPath: out))
+            try ScanArchive.write(root, rootPath: path, date: Date(), partial: false, to: URL(fileURLWithPath: out))
             chmod(out, 0o644)
             let p = ctx.snapshot()
             print("\(p.files) files, \(p.inaccessible) inaccessible")

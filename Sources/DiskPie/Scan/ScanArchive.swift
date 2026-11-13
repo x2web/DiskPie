@@ -1,3 +1,4 @@
+import Compression
 import Foundation
 
 enum ArchiveError: Error { case corrupt, unsupported }
@@ -12,18 +13,26 @@ enum ScanArchive {
         let partial: Bool
     }
 
-    static func encode(_ root: FileNode, rootPath: String, date: Date, partial: Bool) throws -> Data {
+    /// Streams the tree through the compressor in small chunks, so huge trees need no full buffer.
+    static func write(_ root: FileNode, rootPath: String, date: Date, partial: Bool, to url: URL) throws {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        let filter = try OutputFilter(.compress, using: .lzfse) { data in
+            if let data { try handle.write(contentsOf: data) }
+        }
         var w = BinWriter()
-        w.buf.reserveCapacity(max(1 << 16, root.fileCount * 48))
+        w.sink = { bytes in try filter.write(Data(bytes)) }
         w.u32(magic)
         w.str(rootPath)
         w.f64(date.timeIntervalSince1970)
         w.u8(partial ? 1 : 0)
-        write(root, &w)
-        return try (Data(w.buf) as NSData).compressed(using: .lzfse) as Data
+        try write(root, &w)
+        try w.flush()
+        try filter.finalize()
     }
 
-    private static func write(_ node: FileNode, _ w: inout BinWriter) {
+    private static func write(_ node: FileNode, _ w: inout BinWriter) throws {
         w.u8(node.kind.rawValue)
         w.u8(node.isPending ? 1 : 0)
         w.i64(node.size)
@@ -32,7 +41,8 @@ enum ScanArchive {
         w.f64(node.accessed)
         w.str(node.name)
         w.u32(UInt32(node.children.count))
-        for child in node.children { write(child, &w) }
+        if w.buf.count >= BinWriter.chunk { try w.flush() }
+        for child in node.children { try write(child, &w) }
     }
 
     static func decode(_ data: Data) throws -> (Header, FileNode) {
@@ -69,7 +79,15 @@ enum ScanArchive {
 }
 
 private struct BinWriter {
+    static let chunk = 1 << 22
     var buf: [UInt8] = []
+    var sink: (([UInt8]) throws -> Void)?
+
+    mutating func flush() throws {
+        guard !buf.isEmpty else { return }
+        try sink?(buf)
+        buf.removeAll(keepingCapacity: true)
+    }
 
     mutating func u8(_ v: UInt8) { buf.append(v) }
     mutating func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { buf.append(contentsOf: $0) } }
@@ -128,11 +146,10 @@ enum ScanStore {
 
     @discardableResult
     static func save(_ root: FileNode, rootPath: String, date: Date, partial: Bool) throws -> ScanMeta {
-        let data = try ScanArchive.encode(root, rootPath: rootPath, date: date, partial: partial)
         let stem = "\(slug(rootPath))-\(Int(date.timeIntervalSince1970))"
         let meta = ScanMeta(rootPath: rootPath, date: date, totalSize: root.size, fileCount: root.fileCount,
                             file: stem + ".dpscan", partial: partial)
-        try data.write(to: directory.appendingPathComponent(meta.file), options: .atomic)
+        try ScanArchive.write(root, rootPath: rootPath, date: date, partial: partial, to: directory.appendingPathComponent(meta.file))
         try JSONEncoder().encode(meta).write(to: directory.appendingPathComponent(stem + ".json"), options: .atomic)
         prune(rootPath: rootPath)
         return meta

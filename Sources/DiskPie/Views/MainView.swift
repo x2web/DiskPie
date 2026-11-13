@@ -211,6 +211,11 @@ struct StatusBar: View {
                 }
                 StatusExtras()
                 Spacer()
+                if model.cloneOvercount > 0 {
+                    Label("+\(Fmt.size(model.cloneOvercount)) сверх занятого", systemImage: "square.on.square")
+                        .foregroundStyle(.secondary)
+                        .help("Сумма больше занятого места на томе: клоны APFS (копии файлов без дублирования данных) учитываются для каждой копии.")
+                }
                 if model.progress.inaccessible > 0 {
                     Label("нет доступа: \(Fmt.count(model.progress.inaccessible))", systemImage: "lock")
                         .foregroundStyle(.secondary)

@@ -7,25 +7,42 @@ enum NodeKind: UInt8 {
 /// Tree node. The tree is mutated only on the main actor once it is installed in `AppModel`;
 /// background scanners build detached subtrees and hand them over.
 final class FileNode: Identifiable, @unchecked Sendable {
+    // Field order and widths keep a node at 80 bytes; a full disk holds tens of millions of them.
     var name: String
     var size: Int64
-    var fileCount: Int
+    var children: [FileNode] = []
+    // Not weak to save a side table per node. Async work refers to nodes by path, and AppModel.sanitize
+    // clears `parent` across every removed subtree, so a stale node never points at a freed one.
+    unowned(unsafe) var parent: FileNode?
+    private var storedCount: Int32
+    private var storedModified: UInt32
+    private var storedAccessed: UInt32
     var kind: NodeKind
     var isPending = false
-    var modified: Double
-    var accessed: Double
-    var children: [FileNode] = []
-    // Children own their parent strongly through `children`; async work refers to nodes by path,
-    // and every removal goes through AppModel.sanitize, so no stale node outlives its parent.
-    unowned(unsafe) var parent: FileNode?
 
     init(name: String, kind: NodeKind, size: Int64 = 0, fileCount: Int = 0, modified: Double = 0, accessed: Double = 0) {
         self.name = name
         self.kind = kind
         self.size = size
-        self.fileCount = fileCount
-        self.modified = modified
-        self.accessed = accessed
+        storedCount = Int32(clamping: fileCount)
+        storedModified = UInt32(clamping: Int64(modified))
+        storedAccessed = UInt32(clamping: Int64(accessed))
+    }
+
+    var fileCount: Int {
+        get { Int(storedCount) }
+        set { storedCount = Int32(clamping: newValue) }
+    }
+
+    /// Seconds since 1970.
+    var modified: Double {
+        get { Double(storedModified) }
+        set { storedModified = UInt32(clamping: Int64(newValue)) }
+    }
+
+    var accessed: Double {
+        get { Double(storedAccessed) }
+        set { storedAccessed = UInt32(clamping: Int64(newValue)) }
     }
 
     var id: ObjectIdentifier { ObjectIdentifier(self) }

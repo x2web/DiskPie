@@ -36,7 +36,7 @@ struct ResultList: View {
                 NodeRowView(node: node, total: total, detail: row.detail)
                     .contentShape(Rectangle())
                     .onTapGesture { model.reveal(node) }
-                    .onHover { inside in if inside { model.hover(node) } }
+                    .onHover { inside in if inside { model.hover(node) } else { model.unhover(node) } }
                     .contextMenu { NodeMenu(node: node) }
             }
         }

@@ -16,15 +16,16 @@ enum DebugRender {
         let focusPath = arguments.count > index + 4 ? arguments[index + 4] : nil
 
         let start = Date()
-        let ctx = ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path))
-        let root = Scanner.scan(path: path, shallow: false, ctx: ctx)
-        let progress = ctx.snapshot()
-        print("scanned \(path): \(Fmt.size(root.size)) (\(root.size) bytes), \(progress.files) files, \(progress.dirs) dirs, \(progress.inaccessible) inaccessible, \(String(format: "%.2f", Date().timeIntervalSince(start))) s")
-
         let model = AppModel.shared
-        model.root = root
-        model.rootPath = path
-        model.focus = root
+        // Same progressive parallel pipeline as the app.
+        model.startScan(path: path)
+        while model.isScanning || model.busyWriting {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        guard let root = model.root else { return 1 }
+        let progress = model.progress
+        print("scanned \(path): \(Fmt.size(root.size)) (\(root.size) bytes), \(progress.files) files, \(progress.dirs) dirs, \(progress.inaccessible) inaccessible, \(String(format: "%.2f", Date().timeIntervalSince(start))) s")
+        print("top level: " + root.children.prefix(8).map { "\($0.name) \(Fmt.size($0.size))" }.joined(separator: ", "))
         if let focusPath, let node = model.node(atPath: focusPath) { model.focus = node }
         guard let focus = model.focus else { return 1 }
 
@@ -74,7 +75,10 @@ enum DebugAnalyze {
         for group in groups.prefix(3) { print(Fmt.size(group.size), group.paths) }
         do {
             let start = Date()
-            let data = try ScanArchive.encode(root, rootPath: path, date: Date(), partial: false)
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("diskpie-test.dpscan")
+            defer { try? FileManager.default.removeItem(at: file) }
+            try ScanArchive.write(root, rootPath: path, date: Date(), partial: false, to: file)
+            let data = try Data(contentsOf: file)
             let (header, copy) = try ScanArchive.decode(data)
             print("-- archive: \(Fmt.size(Int64(data.count))), roundtrip \(String(format: "%.2f", Date().timeIntervalSince(start))) s, root \(header.rootPath), size match \(copy.size == root.size), count match \(copy.fileCount == root.fileCount)")
             if let victim = Analyses.largestFiles(in: copy, limit: 1).first { victim.parent?.applyDelta(size: -victim.size, count: -1); victim.parent?.children.removeAll { $0 === victim } }
