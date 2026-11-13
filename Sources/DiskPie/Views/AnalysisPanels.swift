@@ -73,6 +73,7 @@ struct LargestPanel: View {
 struct TypesPanel: View {
     @Environment(AppModel.self) private var model
     @State private var stats: [CategoryStat] = []
+    @State private var topRows: [FileCategory: [ResultRow]] = [:]
     @State private var selected: FileCategory?
 
     var body: some View {
@@ -99,19 +100,28 @@ struct TypesPanel: View {
                             .tag(stat.category)
                         }
                     }
-                    if let selected, let stat = stats.first(where: { $0.category == selected }) {
-                        Section("Крупнейшие: \(stat.category.title.lowercased())") {
-                            ForEach(stat.top.items, id: \.value.id) { item in
-                                NodeRowView(node: item.value, total: 0, detail: item.value.parent?.path)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { model.reveal(item.value) }
-                                    .contextMenu { NodeMenu(node: item.value) }
+                    if let selected {
+                        Section("Крупнейшие: \(selected.title.lowercased())") {
+                            ForEach(topRows[selected] ?? []) { row in
+                                if let node = row.ref.node {
+                                    NodeRowView(node: node, total: 0, detail: row.detail)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture { model.reveal(node) }
+                                        .contextMenu { NodeMenu(node: node) }
+                                }
                             }
                         }
                     }
                 }
                 .task(id: AnalysisKey(focus: focus.id, version: model.treeVersion)) {
-                    stats = Analyses.categories(in: focus)
+                    var computed = Analyses.categories(in: focus)
+                    var rows: [FileCategory: [ResultRow]] = [:]
+                    for index in computed.indices {
+                        rows[computed[index].category] = computed[index].top.items.map { ResultRow($0.value) }
+                        computed[index].top = TopK(limit: 0)
+                    }
+                    topRows = rows
+                    stats = computed
                     if selected == nil { selected = stats.first?.category }
                 }
             }
@@ -297,7 +307,12 @@ struct DuplicatesPanel: View {
                                     Text("\(group.paths.count) × \(Fmt.size(group.size))")
                                     Spacer()
                                     Button("Оставить первый") {
-                                        model.trash(paths: Array(group.paths.dropFirst()))
+                                        let extra = search.extraCopies(in: group)
+                                        if extra.isEmpty {
+                                            model.showMessage("Группа устарела", "Первая копия изменилась или удалена. Запустите поиск заново.")
+                                        } else {
+                                            model.trash(paths: extra)
+                                        }
                                     }
                                     .buttonStyle(.borderless)
                                     .help("Остальные копии — в Корзину")

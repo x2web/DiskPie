@@ -39,7 +39,7 @@ enum PrivilegedScan {
         }
     }
 
-    static func run(path: String) async throws -> (FileNode, Int) {
+    static func run(path: String, box: ProcessBox) async throws -> (FileNode, Int) {
         guard let executable = Bundle.main.executablePath else { throw Failure.failed("Не найден исполняемый файл") }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("diskpie-\(UUID().uuidString).dpscan").path
         defer { try? FileManager.default.removeItem(atPath: out) }
@@ -47,7 +47,7 @@ enum PrivilegedScan {
         let command = "\(shellQuote(executable)) --scan \(shellQuote(path)) --out \(shellQuote(out))"
         let script = "do shell script \"\(appleScriptEscape(command))\" with prompt \"DiskPie хочет просканировать «\(appleScriptEscape(path))» с правами администратора.\" with administrator privileges"
 
-        let (status, output) = try await runProcess("/usr/bin/osascript", ["-e", script])
+        let (status, output) = try await runProcess("/usr/bin/osascript", ["-e", script], box: box)
         if status != 0 {
             if output.contains("-128") { throw Failure.cancelled }
             throw Failure.failed(output.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -58,7 +58,7 @@ enum PrivilegedScan {
         return (try ScanArchive.decode(data).1, inaccessible)
     }
 
-    private static func runProcess(_ tool: String, _ args: [String]) async throws -> (Int32, String) {
+    private static func runProcess(_ tool: String, _ args: [String], box: ProcessBox) async throws -> (Int32, String) {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: tool)
@@ -72,6 +72,7 @@ enum PrivilegedScan {
             }
             do {
                 try process.run()
+                box.set(process)
             } catch {
                 continuation.resume(throwing: error)
             }
@@ -84,5 +85,28 @@ enum PrivilegedScan {
 
     private static func appleScriptEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+    }
+}
+
+/// Lets the UI stop the administrator prompt or scan while it runs.
+final class ProcessBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    func set(_ process: Process) {
+        let terminateNow = lock.withLock { () -> Bool in
+            self.process = process
+            return cancelled
+        }
+        if terminateNow { process.terminate() }
+    }
+
+    func terminate() {
+        let process = lock.withLock { () -> Process? in
+            cancelled = true
+            return self.process
+        }
+        if let process, process.isRunning { process.terminate() }
     }
 }

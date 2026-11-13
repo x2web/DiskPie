@@ -14,15 +14,32 @@ private struct HardLinkKey: Hashable {
     let ino: UInt64
 }
 
+/// Hard-linked inodes already counted, with the path that owns the count. Shared between the full scan
+/// and later rescans, so a rescan of the owning folder keeps the size and other links stay at zero.
+final class HardLinkRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private var owners: [HardLinkKey: String] = [:]
+
+    func claim(dev: Int32, ino: UInt64, path: String) -> Bool {
+        lock.withLock {
+            let key = HardLinkKey(dev: dev, ino: ino)
+            if let owner = owners[key] { return owner == path }
+            owners[key] = path
+            return true
+        }
+    }
+}
+
 final class ScanContext: @unchecked Sendable {
     let skipPaths: Set<String>
     private let lock = NSLock()
     private var progress = ScanProgress()
     private var cancelled = false
-    private var hardLinks = Set<HardLinkKey>()
+    let links: HardLinkRegistry
 
-    init(skipPaths: Set<String>) {
+    init(skipPaths: Set<String>, links: HardLinkRegistry = HardLinkRegistry()) {
         self.skipPaths = skipPaths
+        self.links = links
     }
 
     var isCancelled: Bool {
@@ -47,11 +64,6 @@ final class ScanContext: @unchecked Sendable {
 
     func snapshot() -> ScanProgress {
         lock.withLock { progress }
-    }
-
-    /// True the first time a hard-linked inode is seen, so its blocks are counted once.
-    func claimHardLink(dev: Int32, ino: UInt64) -> Bool {
-        lock.withLock { hardLinks.insert(HardLinkKey(dev: dev, ino: ino)).inserted }
     }
 }
 
@@ -140,7 +152,7 @@ enum Scanner {
                 guard let statp = e.fts_statp else { continue }
                 let st = statp.pointee
                 var allocated = Int64(st.st_blocks) * 512
-                if st.st_nlink > 1, !ctx.claimHardLink(dev: st.st_dev, ino: st.st_ino) {
+                if st.st_nlink > 1, !ctx.links.claim(dev: st.st_dev, ino: st.st_ino, path: String(cString: e.fts_path)) {
                     allocated = 0
                 }
                 let kind: NodeKind = (info == FTS_SL || info == FTS_SLNONE) ? .symlink : .file

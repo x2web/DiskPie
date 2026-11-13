@@ -36,7 +36,9 @@ final class AppModel {
     var scanStarted: Date?
     var scanDuration: TimeInterval?
     var scanDate: Date?
-    var busyWriting = false
+    /// Snapshot writers reading the tree in the background; the tree must not change meanwhile.
+    var writers = 0
+    var busyWriting: Bool { writers > 0 }
     /// Scanned sum above the volume's used space: APFS clones are counted once per copy.
     var cloneOvercount: Int64 = 0
 
@@ -74,6 +76,10 @@ final class AppModel {
     @ObservationIgnored private var progressTimer: Timer?
     @ObservationIgnored private var dirty = false
     @ObservationIgnored var skipPaths: Set<String> = []
+    /// Bumped whenever the shown tree is replaced; late async results for an older tree are dropped.
+    @ObservationIgnored private var generation = 0
+    @ObservationIgnored private var links = HardLinkRegistry()
+    @ObservationIgnored private var adminProcess: ProcessBox?
     @ObservationIgnored private var watcher: LiveWatcher?
     @ObservationIgnored private var pendingEvents: [String: Bool] = [:]
     @ObservationIgnored private var eventFlush: DispatchWorkItem?
@@ -82,6 +88,12 @@ final class AppModel {
     var canGoForward: Bool { !forwardStack.isEmpty }
     var canGoUp: Bool { focus?.parent != nil }
     var actionTarget: FileNode? { hovered ?? selection }
+    /// Keyboard deletion acts on the explicit selection only, never on whatever is under the cursor.
+    var deleteTarget: FileNode? { selection }
+
+    func isAttached(_ node: FileNode) -> Bool {
+        root != nil && node.root === root
+    }
     var windowTitle: String { root?.displayName ?? "DiskPie" }
 
     // MARK: Launch & access
@@ -112,7 +124,9 @@ final class AppModel {
         progress = ScanProgress()
         scanStarted = Date()
         scanDuration = nil
-        let ctx = ScanContext(skipPaths: skipPaths)
+        generation += 1
+        links = HardLinkRegistry()
+        let ctx = ScanContext(skipPaths: skipPaths, links: links)
         self.ctx = ctx
         startProgressTimer()
         Task.detached(priority: .userInitiated) { [self] in
@@ -146,6 +160,7 @@ final class AppModel {
 
     func cancelScan() {
         ctx?.cancel()
+        adminProcess?.terminate()
     }
 
     func rescanAll() {
@@ -158,7 +173,9 @@ final class AppModel {
         stopWatcher()
         cachedMeta = nil
         recentScans = ScanStore.all()
+        generation += 1
         ctx = nil
+        adminProcess = nil
         stopProgressTimer()
         isScanning = false
         resetTree()
@@ -175,6 +192,7 @@ final class AppModel {
         collector = []
         backStack = []
         forwardStack = []
+        cloneOvercount = 0
         treeVersion += 1
     }
 
@@ -214,11 +232,11 @@ final class AppModel {
     private func saveSnapshot() {
         guard let root, let date = scanDate else { return }
         let path = rootPath, partial = isPartial
-        busyWriting = true
+        writers += 1
         Task.detached(priority: .utility) { [self] in
             let meta = try? ScanStore.save(root, rootPath: path, date: date, partial: partial)
             await MainActor.run {
-                busyWriting = false
+                writers -= 1
                 if meta != nil { recentScans = ScanStore.all() }
             }
         }
@@ -228,16 +246,24 @@ final class AppModel {
         cancelScan()
         stopWatcher()
         ctx = nil
+        adminProcess = nil
         stopProgressTimer()
+        isScanning = false
+        generation += 1
+        let expected = generation
         Task.detached(priority: .userInitiated) { [self] in
             do {
                 let root = try ScanStore.load(meta)
                 await MainActor.run {
+                    guard expected == generation else { return }
                     installCompletedTree(root, path: meta.rootPath, date: meta.date, partial: meta.partial, addHidden: false)
                     cachedMeta = meta
                 }
             } catch {
-                await MainActor.run { showMessage("Не удалось открыть снимок", error.localizedDescription) }
+                await MainActor.run {
+                    guard expected == generation else { return }
+                    showMessage("Не удалось открыть снимок", error.localizedDescription)
+                }
             }
         }
     }
@@ -267,6 +293,7 @@ final class AppModel {
         scanDate = date
         scanDuration = nil
         progress = ScanProgress(files: node.fileCount, bytes: node.size)
+        links = HardLinkRegistry()
         if addHidden { addHiddenSpaceNode(to: node) }
         root = node
         focus = node
@@ -289,14 +316,22 @@ final class AppModel {
         isScanning = true
         progress = ScanProgress(current: "Сканирование с правами администратора…")
         scanStarted = Date()
+        generation += 1
         let ctx = ScanContext(skipPaths: [])
         self.ctx = ctx
+        let box = ProcessBox()
+        adminProcess = box
         Task.detached(priority: .userInitiated) { [self] in
             do {
-                let (root, inaccessible) = try await PrivilegedScan.run(path: path)
+                let (root, inaccessible) = try await PrivilegedScan.run(path: path, box: box)
                 await MainActor.run {
                     guard ctx === self.ctx else { return }
+                    if ctx.isCancelled {
+                        closeScan()
+                        return
+                    }
                     self.ctx = nil
+                    adminProcess = nil
                     let started = scanStarted
                     installCompletedTree(root, path: path, date: Date(), partial: false, addHidden: true)
                     progress.inaccessible = inaccessible
@@ -308,6 +343,7 @@ final class AppModel {
                 await MainActor.run {
                     guard ctx === self.ctx else { return }
                     closeScan()
+                    if ctx.isCancelled { return }
                     if case PrivilegedScan.Failure.cancelled = error { return }
                     showMessage("Скан от администратора не удался", error.localizedDescription)
                 }
@@ -378,23 +414,42 @@ final class AppModel {
     }
 
     private func refreshDirectory(path: String, deep: Bool) {
-        let skip = skipPaths
+        let skip = skipPaths, links = links, expected = generation
         Task.detached(priority: .utility) { [self] in
-            let listing = Scanner.scan(path: path, shallow: !deep, ctx: ScanContext(skipPaths: skip))
-            await merge(listing, path: path, deep: deep)
+            let listing = Scanner.scan(path: path, shallow: !deep, ctx: ScanContext(skipPaths: skip, links: links))
+            await merge(listing, path: path, deep: deep, generation: expected)
         }
     }
 
+    /// Runs `apply` when the tree may change, or retries shortly while a snapshot is being written.
+    private func whenTreeWritable(generation expected: Int, _ apply: @escaping () -> Void) {
+        guard expected == generation, !isScanning else { return }
+        if busyWriting {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                MainActor.assumeIsolated { self?.whenTreeWritable(generation: expected, apply) }
+            }
+            return
+        }
+        apply()
+    }
+
+    private func merge(_ listing: FileNode, path: String, deep: Bool, generation expected: Int) {
+        whenTreeWritable(generation: expected) { [self] in applyListing(listing, path: path, deep: deep) }
+    }
+
     /// Shallow refresh keeps known subfolders and scans only new ones.
-    private func merge(_ listing: FileNode, path: String, deep: Bool) {
-        guard !isScanning, !busyWriting, let node = node(atPath: path), node.isContainer else { return }
+    private func applyListing(_ listing: FileNode, path: String, deep: Bool) {
+        guard let node = node(atPath: path), node.isContainer else { return }
         guard FileManager.default.fileExists(atPath: path) else {
             detach([node])
             liveChanges += 1
             return
         }
+        // A failed read must not wipe the known subtree.
+        guard listing.kind != .inaccessible else { return }
         if deep {
             replaceContents(of: node, with: listing)
+            restoreHiddenNode(after: node)
             liveChanges += 1
             return
         }
@@ -417,8 +472,16 @@ final class AppModel {
         update.fileCount = merged.reduce(0) { $0 + $1.fileCount }
         update.modified = listing.modified
         replaceContents(of: node, with: update)
+        restoreHiddenNode(after: node)
         liveChanges += 1
         for directory in newDirectories { refreshDirectory(path: directory, deep: true) }
+    }
+
+    /// Refreshing the root drops the synthetic hidden-space node; recompute it.
+    private func restoreHiddenNode(after node: FileNode) {
+        guard node === root, !node.children.contains(where: { $0.kind == .hidden }) else { return }
+        addHiddenSpaceNode(to: node)
+        treeVersion += 1
     }
 
     private func addHiddenSpaceNode(to root: FileNode) {
@@ -546,7 +609,7 @@ final class AppModel {
     // MARK: Navigation
 
     func enter(_ node: FileNode) {
-        guard node.isContainer, node !== focus, node.size > 0 || !node.children.isEmpty else { return }
+        guard isAttached(node), node.isContainer, node !== focus, node.size > 0 || !node.children.isEmpty else { return }
         if let focus { backStack.append(focus) }
         forwardStack.removeAll()
         setFocus(node, direction: .into)
@@ -630,6 +693,7 @@ final class AppModel {
     // MARK: Item actions
 
     func open(_ node: FileNode) {
+        guard isAttached(node) else { return }
         if node.isContainer && node.kind != .package {
             enter(node)
         } else {
@@ -638,17 +702,18 @@ final class AppModel {
     }
 
     func revealInFinder(_ node: FileNode) {
-        guard node.kind != .hidden else { return }
+        guard isAttached(node), node.kind != .hidden else { return }
         NSWorkspace.shared.activateFileViewerSelecting([node.url])
     }
 
     func copyPath(_ node: FileNode) {
+        guard isAttached(node) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(node.path, forType: .string)
     }
 
     func quickLook(_ node: FileNode?) {
-        guard let node, node.kind != .hidden else { return }
+        guard let node, isAttached(node), node.kind != .hidden else { return }
         quickLookURL = node.url
     }
 
@@ -758,16 +823,12 @@ final class AppModel {
         }
         guard node.isContainer, node.parent != nil else { return }
         let path = node.path
-        let skip = skipPaths
+        let skip = skipPaths, links = links, expected = generation
         Task.detached(priority: .userInitiated) { [self] in
-            let sub = Scanner.scan(path: path, shallow: false, ctx: ScanContext(skipPaths: skip))
-            await applyRescan(sub, path: path)
+            let sub = Scanner.scan(path: path, shallow: false, ctx: ScanContext(skipPaths: skip, links: links))
+            await MainActor.run {
+                whenTreeWritable(generation: expected) { [self] in applyListing(sub, path: path, deep: true) }
+            }
         }
-    }
-
-    private func applyRescan(_ sub: FileNode, path: String) {
-        guard !isScanning, !busyWriting, let node = node(atPath: path) else { return }
-        replaceContents(of: node, with: sub)
-        treeVersion += 1
     }
 }

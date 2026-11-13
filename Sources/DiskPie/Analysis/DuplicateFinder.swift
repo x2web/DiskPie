@@ -11,7 +11,10 @@ final class CancelFlag: @unchecked Sendable {
 
 struct DupGroup: Identifiable, Sendable {
     let id = UUID()
+    /// Disk space taken by one copy.
     let size: Int64
+    /// SHA-256 of the full contents.
+    let hash: Data
     var paths: [String]
     var wasted: Int64 { size * Int64(max(0, paths.count - 1)) }
 }
@@ -19,8 +22,8 @@ struct DupGroup: Identifiable, Sendable {
 enum DuplicateFinder {
     private static let chunk = 64 * 1024
 
-    /// Groups by size, then by a hash of the head and tail, then by a full SHA-256.
-    /// Hard links (same inode) are not duplicates and are folded together first.
+    /// Groups by allocated size, then by exact length, then by a hash of the head and tail, then by a full
+    /// SHA-256. Hard links (same inode) are not duplicates and are folded together first.
     static func find(_ files: [(path: String, size: Int64)], cancel: CancelFlag,
                      progress: @escaping @Sendable (String, Double) -> Void) -> [DupGroup] {
         var bySize: [Int64: [String]] = [:]
@@ -33,66 +36,73 @@ enum DuplicateFinder {
             if index % 8 == 0 {
                 progress("Сравниваю файлы по \(Fmt.size(size))", Double(index) / Double(max(1, candidates.count)))
             }
-            let unique = uniqueInodes(paths)
-            guard unique.count > 1 else { continue }
+            var byLength: [Int64: [String]] = [:]
+            for (path, length) in uniqueInodes(paths) { byLength[length, default: []].append(path) }
 
-            var byPartial: [Data: [String]] = [:]
-            for path in unique {
-                if let hash = partialHash(path, size: size) { byPartial[hash, default: []].append(path) }
-            }
-            for sameHead in byPartial.values where sameHead.count > 1 {
-                if size <= Int64(chunk * 2) {
-                    groups.append(DupGroup(size: size, paths: sameHead.sorted()))
-                    continue
+            for (length, sameLength) in byLength where sameLength.count > 1 {
+                var byPartial: [Data: [String]] = [:]
+                for path in sameLength {
+                    if let hash = partialHash(path, length: length) { byPartial[hash, default: []].append(path) }
                 }
-                var byFull: [Data: [String]] = [:]
-                for path in sameHead {
+                for sameHead in byPartial.values where sameHead.count > 1 {
                     if cancel.isCancelled { break }
-                    if let hash = fullHash(path) { byFull[hash, default: []].append(path) }
-                }
-                for same in byFull.values where same.count > 1 {
-                    groups.append(DupGroup(size: size, paths: same.sorted()))
+                    // The head hash already covers files that fit in one chunk.
+                    if length <= Int64(chunk), let hash = fullHash(sameHead[0]) {
+                        groups.append(DupGroup(size: size, hash: hash, paths: sameHead.sorted()))
+                        continue
+                    }
+                    var byFull: [Data: [String]] = [:]
+                    for path in sameHead {
+                        if cancel.isCancelled { break }
+                        if let hash = fullHash(path) { byFull[hash, default: []].append(path) }
+                    }
+                    for (hash, same) in byFull where same.count > 1 {
+                        groups.append(DupGroup(size: size, hash: hash, paths: same.sorted()))
+                    }
                 }
             }
         }
         return groups.sorted { $0.wasted > $1.wasted }
     }
 
-    private static func uniqueInodes(_ paths: [String]) -> [String] {
-        var seen = Set<UInt64>()
-        var dev: Int32 = -1
-        var result: [String] = []
+    /// Distinct regular files with their exact length.
+    private static func uniqueInodes(_ paths: [String]) -> [(String, Int64)] {
+        var seen = Set<[UInt64]>()
+        var result: [(String, Int64)] = []
         for path in paths {
             var st = stat()
-            guard lstat(path, &st) == 0 else { continue }
-            let key = UInt64(st.st_ino) ^ (UInt64(UInt32(bitPattern: st.st_dev)) << 48)
-            if dev == -1 { dev = st.st_dev }
-            if seen.insert(key).inserted { result.append(path) }
+            guard lstat(path, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { continue }
+            if seen.insert([UInt64(UInt32(bitPattern: st.st_dev)), st.st_ino]).inserted {
+                result.append((path, Int64(st.st_size)))
+            }
         }
         return result
     }
 
-    private static func partialHash(_ path: String, size: Int64) -> Data? {
+    private static func partialHash(_ path: String, length: Int64) -> Data? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }
         var hasher = SHA256()
         guard let head = try? handle.read(upToCount: chunk) else { return nil }
         hasher.update(data: head)
-        if size > Int64(chunk * 2) {
-            try? handle.seek(toOffset: UInt64(size) - UInt64(chunk))
+        if length > Int64(chunk) {
+            try? handle.seek(toOffset: UInt64(length) - UInt64(chunk))
             if let tail = try? handle.read(upToCount: chunk) { hasher.update(data: tail) }
         }
         return Data(hasher.finalize())
     }
 
-    private static func fullHash(_ path: String) -> Data? {
+    static func fullHash(_ path: String) -> Data? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }
         var hasher = SHA256()
-        while true {
-            guard let data = try? handle.read(upToCount: 1 << 20) else { return nil }
-            if data.isEmpty { break }
-            hasher.update(data: data)
+        do {
+            // read(upToCount:) returns nil at end of file.
+            while let data = try handle.read(upToCount: 1 << 20), !data.isEmpty {
+                hasher.update(data: data)
+            }
+        } catch {
+            return nil
         }
         return Data(hasher.finalize())
     }
@@ -146,6 +156,13 @@ final class DuplicateSearch {
     func cancel() {
         flag.cancel()
         if phase == .running { phase = .idle }
+    }
+
+    /// Copies other than the first that still match the first byte for byte; empty when the first copy
+    /// is gone or changed, so the last remaining copy is never removed.
+    func extraCopies(in group: DupGroup) -> [String] {
+        guard let first = group.paths.first, DuplicateFinder.fullHash(first) == group.hash else { return [] }
+        return group.paths.dropFirst().filter { DuplicateFinder.fullHash($0) == group.hash }
     }
 
     func forget(paths: [String]) {

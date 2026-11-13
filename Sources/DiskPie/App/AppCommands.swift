@@ -51,9 +51,9 @@ struct AppCommands: Commands {
             Button("Добавить в сборщик") { if let n = model.actionTarget { model.toggleCollector(n) } }
                 .keyboardShortcut("b")
             Divider()
-            Button("Переместить в Корзину") { if let n = model.actionTarget { model.trash([n]) } }
+            Button("Переместить в Корзину") { if let n = model.deleteTarget { model.trash([n]) } }
                 .keyboardShortcut(.delete)
-            Button("Удалить безвозвратно…") { if let n = model.actionTarget { model.trash([n], permanently: true) } }
+            Button("Удалить безвозвратно…") { if let n = model.deleteTarget { model.trash([n], permanently: true) } }
                 .keyboardShortcut(.delete, modifiers: [.command, .option])
         }
     }
