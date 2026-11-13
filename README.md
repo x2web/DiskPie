@@ -73,7 +73,7 @@ The local build is signed with the first *Apple Development* identity found in t
 
 ```bash
 ./scripts/release.sh 1.0.0              # universal build, Developer ID, notarization, zip
-./scripts/release.sh 1.0.0 --publish    # same, plus git tag v1.0.0 and a GitHub release
+./scripts/release.sh 1.0.0 --publish    # same, plus tag v1.0.0 and a GitHub release via the API
 ```
 
 One-time setup:
@@ -85,7 +85,9 @@ One-time setup:
    xcrun notarytool store-credentials diskpie-notary --apple-id <apple-id> --team-id <team-id>
    ```
 
-Override the defaults with `DISKPIE_RELEASE_IDENTITY` and `DISKPIE_NOTARY_PROFILE`.
+3. For `--publish`: a GitHub token in the keychain. `scripts/publish-release.sh` reads it with `security find-generic-password` and never prints it.
+
+Override the defaults with `DISKPIE_RELEASE_IDENTITY`, `DISKPIE_NOTARY_PROFILE`, `DISKPIE_GITHUB_REPO`, `DISKPIE_GITHUB_KEYCHAIN_SERVICE` and `DISKPIE_GITHUB_KEYCHAIN_ACCOUNT`.
 
 ### Developer flags
 

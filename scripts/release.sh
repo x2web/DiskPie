@@ -1,6 +1,7 @@
 #!/bin/bash
 # Universal release build: Developer ID signature, notarization, stapling, zip.
 # Usage: scripts/release.sh <version> [--publish]
+# --publish tags the release and uploads it to GitHub (see scripts/publish-release.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -46,8 +47,5 @@ shasum -a 256 "$ZIP" | tee "$ZIP.sha256"
 echo "Built $ZIP ($VERSION, build $BUILD_NUMBER)"
 
 if [[ "$PUBLISH" == "--publish" ]]; then
-    NOTES="$(awk -v v="## $VERSION" '$0 == v { on = 1; next } /^## / { on = 0 } on' CHANGELOG.md)"
-    git tag -a "v$VERSION" -m "DiskPie $VERSION"
-    git push origin "v$VERSION"
-    gh release create "v$VERSION" "$ZIP" "$ZIP.sha256" --title "DiskPie $VERSION" --notes "$NOTES"
+    ./scripts/publish-release.sh "$VERSION" "$ZIP" "$ZIP.sha256"
 fi
