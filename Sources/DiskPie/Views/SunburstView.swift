@@ -290,7 +290,9 @@ struct HoverTooltip: View {
                     Text(node.name).font(.callout.weight(.semibold)).lineLimit(1)
                     Text("\(Fmt.size(node.size)) · \(Fmt.percent(node.size, of: focus.size))")
                         .font(.caption).foregroundStyle(.secondary)
-                    if node.isContainer {
+                    if node.isCloud {
+                        Label(String(localized: "cloud only"), systemImage: "icloud").font(.caption).foregroundStyle(.secondary)
+                    } else if node.isContainer {
                         Text(Fmt.files(node.fileCount)).font(.caption).foregroundStyle(.secondary)
                     }
                 }

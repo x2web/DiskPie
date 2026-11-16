@@ -19,6 +19,8 @@ final class FileNode: Identifiable, @unchecked Sendable {
     private var storedAccessed: UInt32
     var kind: NodeKind
     var isPending = false
+    /// Placeholder of a cloud file or folder that is not downloaded; takes no disk space.
+    var isCloud = false
 
     init(name: String, kind: NodeKind, size: Int64 = 0, fileCount: Int = 0, modified: Double = 0, accessed: Double = 0) {
         self.name = name

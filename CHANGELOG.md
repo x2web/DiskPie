@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- Cloud files are never downloaded during a scan. Placeholders from iCloud Drive and other File Provider clouds (Dropbox, Google Drive, OneDrive) are detected by their metadata: files count as zero disk space, folders that were never listed on this Mac are not opened. The status bar shows how much is stored only in the cloud.
+- The process blocks materialization of cloud files, so no feature (duplicates, analyses) can trigger a download by accident.
+
 ## 1.1.0
 
 - English interface; Russian is now a translation. The app follows the macOS language setting.

@@ -81,6 +81,9 @@ struct NodeRowView: View {
                     }
                 }
                 Spacer(minLength: 8)
+                if node.isCloud {
+                    Image(systemName: "icloud").foregroundStyle(.secondary).help(String(localized: "cloud only"))
+                }
                 Text(Fmt.size(node.size)).monospacedDigit().foregroundStyle(.secondary)
             }
             if total > 0 {

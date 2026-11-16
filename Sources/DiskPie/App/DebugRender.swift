@@ -58,8 +58,10 @@ enum DebugAnalyze {
     static func run(arguments: [String]) -> Int32 {
         guard let index = arguments.firstIndex(of: "--analyze"), arguments.count > index + 1 else { return 2 }
         let path = arguments[index + 1]
-        let root = Scanner.scan(path: path, shallow: false, ctx: ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path)))
-        print("total \(Fmt.size(root.size)), \(Fmt.files(root.fileCount))")
+        let ctx = ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path))
+        let root = Scanner.scan(path: path, shallow: false, ctx: ctx)
+        let p = ctx.snapshot()
+        print("total \(Fmt.size(root.size)), \(Fmt.files(root.fileCount)); cloud only: \(p.cloudFiles) files (\(Fmt.size(p.cloudBytes))), \(p.cloudFolders) folders")
         print("-- largest files")
         for node in Analyses.largestFiles(in: root, limit: 5) { print(Fmt.size(node.size), node.path) }
         print("-- categories")

@@ -127,7 +127,7 @@ final class DuplicateSearch {
         let min = minSize
         var files: [(path: String, size: Int64)] = []
         Analyses.walk(node) { n in
-            if n.kind == .file, n.size >= min { files.append((n.path, n.size)) }
+            if n.kind == .file, !n.isCloud, n.size >= min { files.append((n.path, n.size)) }
         }
         scopePath = node.path
         groups = []

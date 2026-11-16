@@ -34,7 +34,7 @@ enum ScanArchive {
 
     private static func write(_ node: FileNode, _ w: inout BinWriter) throws {
         w.u8(node.kind.rawValue)
-        w.u8(node.isPending ? 1 : 0)
+        w.u8((node.isPending ? 1 : 0) | (node.isCloud ? 2 : 0))
         w.i64(node.size)
         w.i64(Int64(node.fileCount))
         w.f64(node.modified)
@@ -58,13 +58,14 @@ enum ScanArchive {
 
     private static func read(_ r: inout BinReader, depth: Int) throws -> FileNode {
         guard depth < 4096, let kind = NodeKind(rawValue: try r.u8()) else { throw ArchiveError.corrupt }
-        let pending = try r.u8() != 0
+        let flags = try r.u8()
         let size = try r.i64()
         let count = Int(try r.i64())
         let modified = try r.f64()
         let accessed = try r.f64()
         let node = FileNode(name: try r.str(), kind: kind, size: size, fileCount: count, modified: modified, accessed: accessed)
-        node.isPending = pending
+        node.isPending = flags & 1 != 0
+        node.isCloud = flags & 2 != 0
         let childCount = Int(try r.u32())
         if childCount > 0 {
             node.children.reserveCapacity(childCount)

@@ -129,7 +129,9 @@ struct HoverLine: View {
                 Spacer(minLength: 8)
                 Text(Fmt.size(node.size)).bold().monospacedDigit()
                 Text(Fmt.percent(node.size, of: focusSize)).foregroundStyle(.secondary).monospacedDigit()
-                if node.isContainer {
+                if node.isCloud {
+                    Label(String(localized: "cloud only"), systemImage: "icloud").foregroundStyle(.secondary)
+                } else if node.isContainer {
                     Text(Fmt.files(node.fileCount)).foregroundStyle(.secondary)
                 }
             } else if let aggregate = model.hoveredAggregate {
@@ -217,6 +219,9 @@ struct StatusBar: View {
                     Label(String(localized: "+\(Fmt.size(model.cloneOvercount)) over used space"), systemImage: "square.on.square")
                         .foregroundStyle(.secondary)
                         .help(String(localized: "The total exceeds the volume's used space: APFS clones (copies that share data) are counted for every copy."))
+                }
+                if model.progress.cloudFiles + model.progress.cloudFolders > 0 {
+                    CloudLabel(progress: model.progress)
                 }
                 if model.progress.inaccessible > 0 {
                     DeniedButton()
@@ -321,5 +326,18 @@ struct DeniedListView: View {
             }
         }
         .frame(width: 560, height: 440)
+    }
+}
+
+/// Cloud placeholders are never downloaded; their size is known only for files.
+struct CloudLabel: View {
+    let progress: ScanProgress
+
+    var body: some View {
+        Label(String(localized: "cloud only: \(Fmt.files(progress.cloudFiles)), \(Fmt.size(progress.cloudBytes))"), systemImage: "icloud")
+            .foregroundStyle(.secondary)
+            .help(progress.cloudFolders > 0
+                  ? String(localized: "Files stored only in iCloud Drive or another cloud take no disk space, so they count as zero. DiskPie reads their metadata and never downloads them. Cloud folders that were never opened on this Mac are not listed: \(Fmt.count(progress.cloudFolders)).")
+                  : String(localized: "Files stored only in iCloud Drive or another cloud take no disk space, so they count as zero. DiskPie reads their metadata and never downloads them."))
     }
 }

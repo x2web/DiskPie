@@ -11,6 +11,10 @@ struct ScanProgress: Sendable {
     var dirs = 0
     var bytes: Int64 = 0
     var inaccessible = 0
+    /// Cloud placeholders (iCloud Drive, File Provider) that were not downloaded.
+    var cloudFiles = 0
+    var cloudFolders = 0
+    var cloudBytes: Int64 = 0
     var current = ""
 }
 
@@ -58,6 +62,14 @@ final class ScanContext: @unchecked Sendable {
     }
 
     /// Returns true when the scan was cancelled.
+    func addCloud(files: Int, folders: Int, bytes: Int64) {
+        lock.withLock {
+            progress.cloudFiles += files
+            progress.cloudFolders += folders
+            progress.cloudBytes += bytes
+        }
+    }
+
     func report(files: Int, dirs: Int, bytes: Int64, inaccessible: Int, current: String?) -> Bool {
         lock.withLock {
             progress.files += files
@@ -135,6 +147,16 @@ enum Scanner {
                     fts_set(fts, entry, FTS_SKIP)
                     continue
                 }
+                // A folder the File Provider has not listed yet: reading it would fetch it from the cloud.
+                if level > 0, let st = e.fts_statp, isDataless(st.pointee) {
+                    let node = FileNode(name: entryName(e), kind: .directory)
+                    node.isCloud = true
+                    setDates(node, st.pointee)
+                    attach(node, level: level)
+                    ctx.addCloud(files: 0, folders: 1, bytes: 0)
+                    fts_set(fts, entry, FTS_SKIP)
+                    continue
+                }
                 let name = level == 0 ? path : entryName(e)
                 let node = FileNode(name: name, kind: isPackage(name) ? .package : .directory)
                 if let st = e.fts_statp { setDates(node, st.pointee) }
@@ -176,6 +198,10 @@ enum Scanner {
                 let kind: NodeKind = (info == FTS_SL || info == FTS_SLNONE) ? .symlink : .file
                 let node = FileNode(name: level == 0 ? path : entryName(e), kind: kind, size: allocated, fileCount: 1)
                 setDates(node, st)
+                if isDataless(st) {
+                    node.isCloud = true
+                    ctx.addCloud(files: 1, folders: 0, bytes: Int64(st.st_size))
+                }
                 attach(node, level: level)
                 files += 1
                 bytes += allocated
@@ -201,6 +227,16 @@ enum Scanner {
     private static func entryName(_ e: FTSENT) -> String {
         let offset = Int(e.fts_pathlen) - Int(e.fts_namelen)
         return String(cString: e.fts_path + offset)
+    }
+
+    /// Cloud-only placeholder: metadata is local, contents are not.
+    private static func isDataless(_ st: stat) -> Bool {
+        st.st_flags & UInt32(SF_DATALESS) != 0
+    }
+
+    /// Makes reads of cloud-only files fail instead of downloading them, for the whole process.
+    static func disableCloudDownloads() {
+        _ = setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_PROCESS, IOPOL_MATERIALIZE_DATALESS_FILES_OFF)
     }
 
     private static func setDates(_ node: FileNode, _ st: stat) {

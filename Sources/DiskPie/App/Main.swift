@@ -4,6 +4,7 @@ import Foundation
 enum Entry {
     static func main() {
         let arguments = CommandLine.arguments
+        Scanner.disableCloudDownloads()
         if arguments.contains("--render") {
             exit(MainActor.assumeIsolated { DebugRender.run(arguments: arguments) })
         }

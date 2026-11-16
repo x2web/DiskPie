@@ -218,3 +218,7 @@
 "%@ s" = "%@ с";
 "DiskPie wants to scan “%@” with administrator privileges." = "DiskPie хочет просканировать «%@» с правами администратора.";
 "Hover a tile to see its path here. Click to go in, press Esc to go up, right-click for actions." = "Наведите на плитку — здесь появится путь. Клик — внутрь, Esc — наверх, правая кнопка — действия.";
+"cloud only" = "только в облаке";
+"cloud only: %@, %@" = "только в облаке: %1$@, %2$@";
+"Files stored only in iCloud Drive or another cloud take no disk space, so they count as zero. DiskPie reads their metadata and never downloads them." = "Файлы, которые лежат только в iCloud Drive или другом облаке, не занимают места на диске и считаются нулём. DiskPie читает только их метаданные и никогда их не скачивает.";
+"Files stored only in iCloud Drive or another cloud take no disk space, so they count as zero. DiskPie reads their metadata and never downloads them. Cloud folders that were never opened on this Mac are not listed: %@." = "Файлы, которые лежат только в iCloud Drive или другом облаке, не занимают места на диске и считаются нулём. DiskPie читает только их метаданные и никогда их не скачивает. Облачные папки, которые ни разу не открывались на этом Mac, не перечисляются: %@.";

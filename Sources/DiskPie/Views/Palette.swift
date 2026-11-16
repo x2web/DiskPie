@@ -22,6 +22,7 @@ enum Palette {
 
     static func icon(for node: FileNode) -> String {
         if node.isPending { return "hourglass" }
+        if node.isCloud { return "icloud" }
         switch node.kind {
         case .directory: return "folder.fill"
         case .package: return node.fileExtension == "app" ? "app.fill" : "shippingbox.fill"
@@ -33,6 +34,7 @@ enum Palette {
     }
 
     static func iconColor(for node: FileNode) -> Color {
+        if node.isCloud { return .secondary }
         switch node.kind {
         case .directory: return .accentColor
         case .package: return .purple
