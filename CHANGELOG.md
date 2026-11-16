@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0
+
+- Folders appear in the chart as soon as they are listed and grow while their subfolders are read, instead of showing up only after a whole branch is scanned. The scan goes breadth first, six levels deep, then finishes deeper branches in one pass.
+- Scanning is about twice as fast thanks to better parallelism; scan results are attached to the tree in batches several times a second.
+
 ## 1.2.0
 
 - Cloud files are never downloaded during a scan. Placeholders from iCloud Drive and other File Provider clouds (Dropbox, Google Drive, OneDrive) are detected by their metadata: files count as zero disk space, folders that were never listed on this Mac are not opened. The status bar shows how much is stored only in the cloud.

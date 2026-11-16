@@ -62,6 +62,20 @@ final class ScanContext: @unchecked Sendable {
     }
 
     /// Returns true when the scan was cancelled.
+    /// Scanned folders waiting to be attached to the tree on the main actor, in completion order.
+    private var results: [(placeholder: FileNode, scanned: FileNode)] = []
+
+    func deliver(_ placeholder: FileNode, _ scanned: FileNode) {
+        lock.withLock { results.append((placeholder, scanned)) }
+    }
+
+    func takeResults() -> [(placeholder: FileNode, scanned: FileNode)] {
+        lock.withLock {
+            defer { results.removeAll(keepingCapacity: true) }
+            return results
+        }
+    }
+
     func addCloud(files: Int, folders: Int, bytes: Int64) {
         lock.withLock {
             progress.cloudFiles += files

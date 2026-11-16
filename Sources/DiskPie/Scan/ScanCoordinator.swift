@@ -1,55 +1,60 @@
 import Foundation
 
-/// Progressive parallel scan: list the root, then its subfolders, then scan grandchildren fully in parallel.
-/// Each finished piece is attached on the main actor, so the chart fills in while scanning.
+/// Progressive parallel scan, breadth first. Folders near the root are read one level at a time, so
+/// each appears in the tree as soon as it is listed and its subfolders fill in as they are read.
+/// Below `expandDepth` a branch is scanned in one pass. Results are attached by the main actor in
+/// batches (see AppModel.applyScanResults).
 enum ScanCoordinator {
+    static let expandDepth = 6
+
+    private struct Unit: Sendable {
+        let placeholder: FileNode
+        let path: String
+        let depth: Int
+    }
+
     static func run(path: String, ctx: ScanContext, model: AppModel) async {
         let root = Scanner.scan(path: path, shallow: true, ctx: ctx)
-        let level1 = root.pendingChildren(basePath: path)
+        var queue = root.pendingChildren(basePath: path).map { Unit(placeholder: $0.0, path: $0.1, depth: 1) }
         await model.installScanRoot(root, ctx: ctx)
 
-        let limit = max(4, min(10, ProcessInfo.processInfo.activeProcessorCount))
-        var units: [(FileNode, String)] = []
+        let limit = max(4, min(12, ProcessInfo.processInfo.activeProcessorCount))
+        var head = 0
 
-        await forEachConcurrently(level1, limit: limit, ctx: ctx) { item in
-            let sub = Scanner.scan(path: item.1, shallow: true, ctx: ctx)
-            return (item.0, sub, sub.pendingChildren(basePath: item.1))
-        } onResult: { placeholder, sub, pending in
-            await model.fill(placeholder, with: sub, ctx: ctx)
-            units.append(contentsOf: pending)
-        }
-
-        await forEachConcurrently(units, limit: limit, ctx: ctx) { item in
-            (item.0, Scanner.scan(path: item.1, shallow: false, ctx: ctx))
-        } onResult: { placeholder, sub in
-            await model.fill(placeholder, with: sub, ctx: ctx)
+        await withTaskGroup(of: [Unit].self) { group in
+            var running = 0
+            func launch() {
+                while running < limit, head < queue.count, !ctx.isCancelled {
+                    let unit = queue[head]
+                    head += 1
+                    running += 1
+                    group.addTask { scan(unit, ctx: ctx) }
+                }
+                // Drop consumed entries now and then so the queue does not grow without bound.
+                if head > 4096 {
+                    queue.removeFirst(head)
+                    head = 0
+                }
+            }
+            launch()
+            while let next = await group.next() {
+                running -= 1
+                queue.append(contentsOf: next)
+                launch()
+            }
         }
 
         await model.scanFinished(ctx: ctx)
     }
 
-    private static func forEachConcurrently<T: Sendable, R: Sendable>(
-        _ items: [T],
-        limit: Int,
-        ctx: ScanContext,
-        work: @escaping @Sendable (T) -> R,
-        onResult: (R) async -> Void
-    ) async {
-        await withTaskGroup(of: R.self) { group in
-            var index = 0
-            while index < min(limit, items.count) {
-                let item = items[index]
-                group.addTask { work(item) }
-                index += 1
-            }
-            while let result = await group.next() {
-                await onResult(result)
-                if index < items.count, !ctx.isCancelled {
-                    let item = items[index]
-                    group.addTask { work(item) }
-                    index += 1
-                }
-            }
-        }
+    private static func scan(_ unit: Unit, ctx: ScanContext) -> [Unit] {
+        let shallow = unit.depth < expandDepth
+        let scanned = Scanner.scan(path: unit.path, shallow: shallow, ctx: ctx)
+        let next = shallow
+            ? scanned.pendingChildren(basePath: unit.path).map { Unit(placeholder: $0.0, path: $0.1, depth: unit.depth + 1) }
+            : []
+        // Delivered before its subfolders can finish, which keeps parents ahead of children.
+        ctx.deliver(unit.placeholder, scanned)
+        return next
     }
 }

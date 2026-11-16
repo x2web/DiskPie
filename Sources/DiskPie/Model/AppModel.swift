@@ -233,13 +233,37 @@ final class AppModel {
         treeVersion += 1
     }
 
-    func fill(_ placeholder: FileNode, with sub: FileNode, ctx: ScanContext) {
-        guard ctx === self.ctx else { return }
-        replaceContents(of: placeholder, with: sub)
+    /// Attaches everything the scanner finished since the last call. Parents always arrive before their
+    /// subfolders, so each placeholder is already in the tree. Sorting happens once per touched folder.
+    private func applyScanResults(_ ctx: ScanContext) {
+        let results = ctx.takeResults()
+        guard !results.isEmpty else { return }
+        var touched: [ObjectIdentifier: FileNode] = [:]
+        for (placeholder, scanned) in results {
+            guard placeholder.children.isEmpty else {
+                replaceContents(of: placeholder, with: scanned)
+                continue
+            }
+            placeholder.adopt(scanned.children)
+            placeholder.isPending = false
+            if scanned.kind == .inaccessible { placeholder.kind = .inaccessible }
+            let sizeDelta = scanned.size - placeholder.size
+            let countDelta = scanned.fileCount - placeholder.fileCount
+            var node: FileNode? = placeholder
+            while let current = node {
+                current.size += sizeDelta
+                current.fileCount += countDelta
+                if let parent = current.parent { touched[ObjectIdentifier(parent)] = parent }
+                node = current.parent
+            }
+        }
+        for node in touched.values { node.sortChildren() }
+        dirty = true
     }
 
     func scanFinished(ctx: ScanContext) {
         guard ctx === self.ctx else { return }
+        applyScanResults(ctx)
         stopProgressTimer()
         progress = ctx.snapshot()
         deniedPaths = ctx.deniedPaths
@@ -535,7 +559,7 @@ final class AppModel {
 
     private func startProgressTimer() {
         stopProgressTimer()
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
     }
@@ -546,7 +570,10 @@ final class AppModel {
     }
 
     private func tick() {
-        if let ctx { progress = ctx.snapshot() }
+        if let ctx {
+            progress = ctx.snapshot()
+            applyScanResults(ctx)
+        }
         if dirty {
             dirty = false
             treeVersion += 1
