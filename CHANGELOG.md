@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
 - APFS clones are counted once. Folders full of cloned copies, such as Xcode test simulators in `~/Library/Developer/XCTestDevices`, show the space they really take instead of the sum of every copy (435 GB → 69 GB on a test machine). The status bar shows how much data clones share; a setting turns it off.
 - Duplicates no longer list clones of the same file, since deleting them frees nothing.
