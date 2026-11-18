@@ -70,6 +70,10 @@ final class AppModel {
         }
     }
     var liveChanges = 0
+    /// Applies from the next scan.
+    var countsClones = ScanSettings.countsClones {
+        didSet { UserDefaults.standard.set(countsClones, forKey: ScanSettings.countsClonesKey) }
+    }
     var ringDepth: Int = UserDefaults.standard.object(forKey: "ringDepth") as? Int ?? 5 {
         didSet { UserDefaults.standard.set(ringDepth, forKey: "ringDepth") }
     }
@@ -82,7 +86,7 @@ final class AppModel {
     @ObservationIgnored var skipPaths: Set<String> = []
     /// Bumped whenever the shown tree is replaced; late async results for an older tree are dropped.
     @ObservationIgnored private var generation = 0
-    @ObservationIgnored private var links = HardLinkRegistry()
+    @ObservationIgnored private var links = SharedDataRegistry()
     @ObservationIgnored private var adminProcess: ProcessBox?
     @ObservationIgnored private var watcher: LiveWatcher?
     @ObservationIgnored private var pendingEvents: [String: Bool] = [:]
@@ -149,7 +153,7 @@ final class AppModel {
         scanStarted = Date()
         scanDuration = nil
         generation += 1
-        links = HardLinkRegistry()
+        links = SharedDataRegistry()
         let ctx = ScanContext(skipPaths: skipPaths, links: links)
         self.ctx = ctx
         startProgressTimer()
@@ -349,7 +353,7 @@ final class AppModel {
         scanDate = date
         scanDuration = nil
         progress = ScanProgress(files: node.fileCount, bytes: node.size)
-        links = HardLinkRegistry()
+        links = SharedDataRegistry()
         refreshVolumeSpace()
         if addHidden { addHiddenSpaceNode(to: node) }
         root = node
@@ -380,7 +384,7 @@ final class AppModel {
         adminProcess = box
         Task.detached(priority: .userInitiated) { [self] in
             do {
-                let (root, inaccessible) = try await PrivilegedScan.run(path: path, box: box)
+                let (root, inaccessible, cloneBytes) = try await PrivilegedScan.run(path: path, box: box)
                 await MainActor.run {
                     guard ctx === self.ctx else { return }
                     if ctx.isCancelled {
@@ -392,6 +396,7 @@ final class AppModel {
                     let started = scanStarted
                     installCompletedTree(root, path: path, date: Date(), partial: false, addHidden: true)
                     progress.inaccessible = inaccessible
+                    progress.cloneBytes = cloneBytes
                     scanDuration = started.map { Date().timeIntervalSince($0) }
                     saveSnapshot()
                     configureWatcher()

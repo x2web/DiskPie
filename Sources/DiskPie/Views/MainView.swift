@@ -215,10 +215,15 @@ struct StatusBar: View {
                 }
                 StatusExtras()
                 Spacer()
+                if model.progress.cloneBytes > 0 {
+                    Label(String(localized: "\(Fmt.size(model.progress.cloneBytes)) shared by clones"), systemImage: "square.on.square.dashed")
+                        .foregroundStyle(.secondary)
+                        .help(String(localized: "APFS clones (copies made by Finder, Xcode, simulators) share data until one of them changes. Shared data is counted for the first copy found; other copies count only their own changes. Deleting one copy frees only its own part."))
+                }
                 if model.cloneOvercount > 0 {
                     Label(String(localized: "+\(Fmt.size(model.cloneOvercount)) over used space"), systemImage: "square.on.square")
                         .foregroundStyle(.secondary)
-                        .help(String(localized: "The total exceeds the volume's used space: APFS clones (copies that share data) are counted for every copy."))
+                        .help(String(localized: "The total exceeds the volume's used space: some data shared by APFS clones is counted more than once."))
                 }
                 if model.progress.cloudFiles + model.progress.cloudFolders > 0 {
                     CloudLabel(progress: model.progress)

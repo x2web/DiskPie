@@ -153,7 +153,11 @@
 "in %@" = "за %@";
 "scan stopped" = "скан прерван";
 "+%@ over used space" = "+%@ сверх занятого";
-"The total exceeds the volume's used space: APFS clones (copies that share data) are counted for every copy." = "Сумма больше занятого места на томе: клоны APFS (копии файлов без дублирования данных) учитываются для каждой копии.";
+"The total exceeds the volume's used space: some data shared by APFS clones is counted more than once." = "Сумма больше занятого места на томе: часть общих данных клонов APFS посчитана больше одного раза.";
+"%@ shared by clones" = "%@ общих у клонов";
+"APFS clones (copies made by Finder, Xcode, simulators) share data until one of them changes. Shared data is counted for the first copy found; other copies count only their own changes. Deleting one copy frees only its own part." = "Клоны APFS (копии из Finder, Xcode, симуляторов) делят данные, пока одну из копий не изменят. Общие данные засчитаны первой найденной копии, остальным — только их собственные изменения. Удаление одной копии освобождает только её собственную часть.";
+"Count data shared by APFS clones once" = "Учитывать общие данные клонов APFS один раз";
+"Copies made by Finder, Xcode and simulators share data until changed. Without this option every copy counts in full. Scanning is a little slower. Applies to the next scan." = "Копии из Finder, Xcode и симуляторов делят данные, пока их не изменят. Без этой настройки каждая копия считается целиком. Сканирование немного медленнее. Действует со следующего сканирования.";
 "No Full Disk Access" = "Нет полного доступа";
 "%@ free of %@" = "свободно %@ из %@";
 "Free space on the volume as Finder counts it, including purgeable space that macOS frees on demand." = "Свободное место на томе, как его считает Finder: вместе с purgeable-местом, которое macOS освобождает по требованию.";

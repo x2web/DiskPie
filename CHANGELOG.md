@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- APFS clones are counted once. Folders full of cloned copies, such as Xcode test simulators in `~/Library/Developer/XCTestDevices`, show the space they really take instead of the sum of every copy (435 GB → 69 GB on a test machine). The status bar shows how much data clones share; a setting turns it off.
+- Duplicates no longer list clones of the same file, since deleting them frees nothing.
+- Fixed: folders in the inspector lists kept the hourglass icon after the scan finished.
+
 ## 1.3.0
 
 - Folders appear in the chart as soon as they are listed and grow while their subfolders are read, instead of showing up only after a whole branch is scanned. The scan goes breadth first, six levels deep, then finishes deeper branches in one pass.

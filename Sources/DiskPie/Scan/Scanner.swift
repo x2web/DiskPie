@@ -15,27 +15,51 @@ struct ScanProgress: Sendable {
     var cloudFiles = 0
     var cloudFolders = 0
     var cloudBytes: Int64 = 0
+    /// Bytes not counted because clones share them with a file counted earlier.
+    var cloneBytes: Int64 = 0
     var current = ""
 }
 
-private struct HardLinkKey: Hashable {
+private struct SharedKey: Hashable {
     let dev: Int32
-    let ino: UInt64
+    let id: UInt64
 }
 
-/// Hard-linked inodes already counted, with the path that owns the count. Shared between the full scan
-/// and later rescans, so a rescan of the owning folder keeps the size and other links stay at zero.
-final class HardLinkRegistry: @unchecked Sendable {
+/// Data shared between files: hard-linked inodes and APFS clones. The first path that claims a shared
+/// inode or clone owns its size; the registry outlives the full scan, so a rescan of the owning folder
+/// keeps the size and the other copies stay at their private size.
+final class SharedDataRegistry: @unchecked Sendable {
     private let lock = NSLock()
-    private var owners: [HardLinkKey: String] = [:]
+    private var links: [SharedKey: String] = [:]
+    private var clones: [SharedKey: String] = [:]
+    /// Count data shared by APFS clones once. Costs one extra call per file.
+    let countsClones: Bool
 
-    func claim(dev: Int32, ino: UInt64, path: String) -> Bool {
-        lock.withLock {
-            let key = HardLinkKey(dev: dev, ino: ino)
-            if let owner = owners[key] { return owner == path }
-            owners[key] = path
-            return true
-        }
+    init(countsClones: Bool = ScanSettings.countsClones) {
+        self.countsClones = countsClones
+    }
+
+    func claimLink(dev: Int32, ino: UInt64, path: String) -> Bool {
+        lock.withLock { Self.claim(&links, SharedKey(dev: dev, id: ino), path) }
+    }
+
+    func claimClone(dev: Int32, cloneID: UInt64, path: String) -> Bool {
+        lock.withLock { Self.claim(&clones, SharedKey(dev: dev, id: cloneID), path) }
+    }
+
+    private static func claim(_ owners: inout [SharedKey: String], _ key: SharedKey, _ path: String) -> Bool {
+        if let owner = owners[key] { return owner == path }
+        owners[key] = path
+        return true
+    }
+}
+
+enum ScanSettings {
+    static let countsClonesKey = "countClonesOnce"
+
+    static var countsClones: Bool {
+        // bool(forKey:) also parses "NO" given as a launch argument (-countClonesOnce NO).
+        UserDefaults.standard.object(forKey: countsClonesKey) == nil || UserDefaults.standard.bool(forKey: countsClonesKey)
     }
 }
 
@@ -45,10 +69,10 @@ final class ScanContext: @unchecked Sendable {
     private var progress = ScanProgress()
     private var cancelled = false
     private var denied: [DeniedPath] = []
-    let links: HardLinkRegistry
+    let links: SharedDataRegistry
     static let deniedLimit = 5000
 
-    init(skipPaths: Set<String>, links: HardLinkRegistry = HardLinkRegistry()) {
+    init(skipPaths: Set<String>, links: SharedDataRegistry = SharedDataRegistry()) {
         self.skipPaths = skipPaths
         self.links = links
     }
@@ -84,11 +108,12 @@ final class ScanContext: @unchecked Sendable {
         }
     }
 
-    func report(files: Int, dirs: Int, bytes: Int64, inaccessible: Int, current: String?) -> Bool {
+    func report(files: Int, dirs: Int, bytes: Int64, cloneBytes: Int64, inaccessible: Int, current: String?) -> Bool {
         lock.withLock {
             progress.files += files
             progress.dirs += dirs
             progress.bytes += bytes
+            progress.cloneBytes += cloneBytes
             progress.inaccessible += inaccessible
             if let current { progress.current = current }
             return cancelled
@@ -129,7 +154,7 @@ enum Scanner {
         var stack: [FileNode] = []
         var levels: [Int] = []
         var files = 0, dirs = 0, inaccessible = 0
-        var bytes: Int64 = 0
+        var bytes: Int64 = 0, cloneBytes: Int64 = 0
         var tick = 0
 
         guard let cPath = strdup(path) else { return FileNode(name: path, kind: .inaccessible) }
@@ -206,8 +231,14 @@ enum Scanner {
                 guard let statp = e.fts_statp else { continue }
                 let st = statp.pointee
                 var allocated = Int64(st.st_blocks) * 512
-                if st.st_nlink > 1, !ctx.links.claim(dev: st.st_dev, ino: st.st_ino, path: String(cString: e.fts_path)) {
+                if st.st_nlink > 1, !ctx.links.claimLink(dev: st.st_dev, ino: st.st_ino, path: String(cString: e.fts_path)) {
                     allocated = 0
+                }
+                if info == FTS_F, allocated > 0, ctx.links.countsClones, !isDataless(st),
+                   let clone = cloneInfo(e.fts_path), clone.privateSize < allocated,
+                   !ctx.links.claimClone(dev: st.st_dev, cloneID: clone.id, path: String(cString: e.fts_path)) {
+                    cloneBytes += allocated - clone.privateSize
+                    allocated = clone.privateSize
                 }
                 let kind: NodeKind = (info == FTS_SL || info == FTS_SLNONE) ? .symlink : .file
                 let node = FileNode(name: level == 0 ? path : entryName(e), kind: kind, size: allocated, fileCount: 1)
@@ -226,14 +257,14 @@ enum Scanner {
 
             tick += 1
             if tick & 0x7FF == 0 {
-                let cancelled = ctx.report(files: files, dirs: dirs, bytes: bytes, inaccessible: inaccessible,
-                                           current: String(cString: e.fts_path))
-                files = 0; dirs = 0; bytes = 0; inaccessible = 0
+                let cancelled = ctx.report(files: files, dirs: dirs, bytes: bytes, cloneBytes: cloneBytes,
+                                           inaccessible: inaccessible, current: String(cString: e.fts_path))
+                files = 0; dirs = 0; bytes = 0; cloneBytes = 0; inaccessible = 0
                 if cancelled { break }
             }
         }
 
-        _ = ctx.report(files: files, dirs: dirs, bytes: bytes, inaccessible: inaccessible, current: nil)
+        _ = ctx.report(files: files, dirs: dirs, bytes: bytes, cloneBytes: cloneBytes, inaccessible: inaccessible, current: nil)
         while let node = stack.popLast() { node.finalizeDirectory() }
         return root ?? FileNode(name: path, kind: .inaccessible)
     }
@@ -241,6 +272,23 @@ enum Scanner {
     private static func entryName(_ e: FTSENT) -> String {
         let offset = Int(e.fts_pathlen) - Int(e.fts_namelen)
         return String(cString: e.fts_path + offset)
+    }
+
+    /// APFS clone family of a file and the part of its blocks that no other clone shares.
+    /// Files copied with clonefile keep one clone ID until one of them is written to.
+    private static func cloneInfo(_ path: UnsafePointer<CChar>) -> (id: UInt64, privateSize: Int64)? {
+        var request = attrlist()
+        request.bitmapcount = u_short(ATTR_BIT_MAP_COUNT)
+        request.forkattr = attrgroup_t(ATTR_CMNEXT_PRIVATESIZE | ATTR_CMNEXT_CLONEID)
+        // u_int32_t length, then attributes in bit order: private size (off_t), clone ID (u_int64_t).
+        var buffer = (UInt32(0), Int64(0), UInt64(0))
+        let options = UInt32(FSOPT_ATTR_CMN_EXTENDED | FSOPT_NOFOLLOW)
+        let result = withUnsafeMutableBytes(of: &buffer) { raw -> (UInt64, Int64)? in
+            guard getattrlist(path, &request, raw.baseAddress, raw.count, options) == 0 else { return nil }
+            return (raw.loadUnaligned(fromByteOffset: 12, as: UInt64.self), raw.loadUnaligned(fromByteOffset: 4, as: Int64.self))
+        }
+        guard let result, result.0 != 0 else { return nil }
+        return (result.0, result.1)
     }
 
     /// Cloud-only placeholder: metadata is local, contents are not.

@@ -48,7 +48,7 @@ Requires macOS 14 Sonoma or later. Universal binary (Apple silicon and Intel).
 - **Other volumes** mounted inside the scanned folder are skipped. Scanning `/` does not count the data volume twice, because firmlinks already lead into it.
 - **Hidden space:** when you scan a volume root, the gap between used space and the sum of files is shown as a gray "system and hidden" segment. It covers APFS snapshots, purgeable space, service volumes and unreadable folders.
 - **Cloud files** in iCloud Drive and other File Provider clouds are never downloaded. Files stored only in the cloud count as zero (they take no disk space) and are marked with a cloud icon; the status bar shows their total. Cloud folders never listed on this Mac are not opened.
-- **APFS clones** are counted once per copy, so the sum can exceed used space. The status bar then says by how much.
+- **APFS clones** (copies made by Finder, `cp -c`, Xcode, simulators) share data until one copy changes. DiskPie reads each file's clone ID and private size from APFS: shared data is counted for the first copy found, the other copies count only their own changes. The status bar shows how much data clones share. Deleting one copy frees only its own part. Data shared by clones that were changed later can still be counted more than once; if the sum exceeds used space, the status bar says by how much. The setting **Count data shared by APFS clones once** turns this off (scans are a little faster).
 
 ## Full Disk Access
 

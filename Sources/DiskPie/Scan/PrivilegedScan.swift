@@ -15,7 +15,7 @@ enum PrivilegedScan {
         }
     }
 
-    /// `DiskPie --scan <path> --out <file>`: full scan written as a snapshot readable by the user.
+    /// `DiskPie --scan <path> --out <file> [--clones 0|1]`: full scan written as a snapshot readable by the user.
     static func runCLI(arguments: [String]) -> Int32 {
         func value(_ flag: String) -> String? {
             guard let i = arguments.firstIndex(of: flag), arguments.count > i + 1 else { return nil }
@@ -25,13 +25,15 @@ enum PrivilegedScan {
             FileHandle.standardError.write(Data("usage: --scan <path> --out <file>\n".utf8))
             return 2
         }
-        let ctx = ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path))
+        // Runs as root, whose defaults differ from the user's: the setting comes as an argument.
+        let links = SharedDataRegistry(countsClones: value("--clones") != "0")
+        let ctx = ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path), links: links)
         let root = Scanner.scan(path: path, shallow: false, ctx: ctx)
         do {
             try ScanArchive.write(root, rootPath: path, date: Date(), partial: false, to: URL(fileURLWithPath: out))
             chmod(out, 0o644)
             let p = ctx.snapshot()
-            print("\(p.files) files, \(p.inaccessible) inaccessible")
+            print("\(p.files) files, \(p.inaccessible) inaccessible, \(p.cloneBytes) clone bytes")
             return 0
         } catch {
             FileHandle.standardError.write(Data("\(error)\n".utf8))
@@ -39,12 +41,12 @@ enum PrivilegedScan {
         }
     }
 
-    static func run(path: String, box: ProcessBox) async throws -> (FileNode, Int) {
+    static func run(path: String, box: ProcessBox) async throws -> (root: FileNode, inaccessible: Int, cloneBytes: Int64) {
         guard let executable = Bundle.main.executablePath else { throw Failure.failed(String(localized: "Executable not found")) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("diskpie-\(UUID().uuidString).dpscan").path
         defer { try? FileManager.default.removeItem(atPath: out) }
 
-        let command = "\(shellQuote(executable)) --scan \(shellQuote(path)) --out \(shellQuote(out))"
+        let command = "\(shellQuote(executable)) --scan \(shellQuote(path)) --out \(shellQuote(out)) --clones \(ScanSettings.countsClones ? 1 : 0)"
         let prompt = String(localized: "DiskPie wants to scan “\(path)” with administrator privileges.")
         let script = "do shell script \"\(appleScriptEscape(command))\" with prompt \"\(appleScriptEscape(prompt))\" with administrator privileges"
 
@@ -55,8 +57,9 @@ enum PrivilegedScan {
         }
         let numbers = output.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
         let inaccessible = numbers.count >= 2 ? numbers[1] : 0
+        let cloneBytes = numbers.count >= 3 ? Int64(numbers[2]) : 0
         let data = try Data(contentsOf: URL(fileURLWithPath: out))
-        return (try ScanArchive.decode(data).1, inaccessible)
+        return (try ScanArchive.decode(data).1, inaccessible, cloneBytes)
     }
 
     private static func runProcess(_ tool: String, _ args: [String], box: ProcessBox) async throws -> (Int32, String) {

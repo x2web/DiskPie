@@ -100,7 +100,8 @@ enum DebugDenied {
         guard let index = arguments.firstIndex(of: "--denied"), arguments.count > index + 1 else { return 2 }
         let path = arguments[index + 1]
         let ctx = ScanContext(skipPaths: DiskAccess.skipPaths(forRoot: path))
-        _ = Scanner.scan(path: path, shallow: false, ctx: ctx)
+        let root = Scanner.scan(path: path, shallow: false, ctx: ctx)
+        print("total \(Fmt.size(root.size)), \(Fmt.files(root.fileCount)); shared by clones: \(Fmt.size(ctx.snapshot().cloneBytes))")
         print("full disk access: \(DiskAccess.hasFullDiskAccess())")
         for group in DeniedReason.group(ctx.deniedPaths) {
             print("== \(group.reason.title) (\(group.paths.count))")
