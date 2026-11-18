@@ -39,11 +39,19 @@ struct NodeMenu: View {
 }
 
 struct NodeIcon: View {
-    let node: FileNode
+    // Values, not the node: SwiftUI skips body when inputs compare equal, and a node reference stays
+    // equal while the scan fills the node in, which left pending icons on finished folders.
+    private let symbol: String
+    private let color: Color
+
+    init(node: FileNode) {
+        symbol = Palette.icon(for: node)
+        color = Palette.iconColor(for: node)
+    }
 
     var body: some View {
-        Image(systemName: Palette.icon(for: node))
-            .foregroundStyle(Palette.iconColor(for: node))
+        Image(systemName: symbol)
+            .foregroundStyle(color)
             .frame(width: 18)
     }
 }
@@ -69,6 +77,15 @@ struct NodeRowView: View {
     let node: FileNode
     let total: Int64
     var detail: String?
+    // Part of the view's inputs so the row redraws when the node changes in place (see NodeIcon).
+    private let state: (size: Int64, pending: Bool, cloud: Bool)
+
+    init(node: FileNode, total: Int64, detail: String? = nil) {
+        self.node = node
+        self.total = total
+        self.detail = detail
+        state = (node.size, node.isPending, node.isCloud)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
